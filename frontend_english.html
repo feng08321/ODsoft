@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AOD Inversion System</title>
+    <!-- ECharts library from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f7fa;
+            color: #303133;
+            line-height: 1.6;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 0;
+            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+        }
+        
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .main {
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .card-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid #ebeef5;
+            background-color: #f5f7fa;
+        }
+        
+        .card-header h3 {
+            font-size: 16px;
+            font-weight: 500;
+            color: #303133;
+            margin: 0;
+        }
+        
+        .card-body {
+            padding: 20px;
+        }
+        
+        .form-row {
+            margin-bottom: 18px;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #606266;
+            font-weight: 500;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #dcdfe6;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #606266;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: #409eff;
+        }
+        
+        .file-upload {
+            border: 2px dashed #d9d9d9;
+            border-radius: 6px;
+            background-color: #fafafa;
+            padding: 40px 0;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        
+        .file-upload:hover {
+            border-color: #409eff;
+        }
+        
+        .file-upload input {
+            display: none;
+        }
+        
+        .file-upload-text {
+            color: #606266;
+            font-size: 14px;
+        }
+        
+        .file-upload-text em {
+            color: #409eff;
+            font-style: normal;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        
+        .btn-primary {
+            background-color: #409eff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #66b1ff;
+        }
+        
+        .btn-success {
+            background-color: #67c23a;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #85ce61;
+        }
+        
+        .btn-default {
+            background-color: #fff;
+            color: #606266;
+            border: 1px solid #dcdfe6;
+        }
+        
+        .btn-default:hover {
+            color: #409eff;
+            border-color: #c6e2ff;
+            background-color: #ecf5ff;
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e4e7ed;
+            margin-bottom: 20px;
+        }
+        
+        .tab-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            color: #909399;
+            font-size: 14px;
+            position: relative;
+            transition: color 0.3s;
+        }
+        
+        .tab-item:hover {
+            color: #409eff;
+        }
+        
+        .tab-item.active {
+            color: #409eff;
+            font-weight: 500;
+        }
+        
+        .tab-item.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: #409eff;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 500px;
+            margin-bottom: 20px;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ebeef5;
+        }
+        
+        .table th {
+            background-color: #f5f7fa;
+            color: #909399;
+            font-weight: 500;
+        }
+        
+        .table tr:hover {
+            background-color: #f5f7fa;
+        }
+        
+        .result-info {
+            background-color: #f0f9ff;
+            border-left: 4px solid #409eff;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .result-info p {
+            margin: 5px 0;
+            color: #606266;
+        }
+        
+        .result-info strong {
+            color: #303133;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #909399;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #909399;
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #409eff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .radio-group {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 18px;
+        }
+        
+        .radio-item {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        
+        .radio-item input {
+            margin-right: 8px;
+        }
+        
+        .radio-item label {
+            cursor: pointer;
+            color: #606266;
+            font-size: 14px;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #909399;
+            font-size: 14px;
+            border-top: 1px solid #ebeef5;
+            background-color: #f5f7fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>AOD Inversion System
+                <a href="/static/help.html" target="_blank"
+                   style="font-size:14px; font-weight:400; color:#fff; opacity:0.9; margin-left:16px; text-decoration:underline;">帮助 / 反演原理说明</a>
+            </h1>
+        </div>
+    </div>
+    
+    <div class="main">
+        <!-- Data Upload Card -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Data Upload</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <label class="form-label">DNI Data File</label>
+                    <div class="file-upload" onclick="document.getElementById('fileInput').click()">
+                        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)">
+                        <div class="file-upload-text">
+                            <em>Click to upload</em> or drag and drop file here
+                        </div>
+                        <div id="fileName" style="margin-top: 10px; color: #409eff;"></div>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <label class="form-label">Inversion Type</label>
+                    <div class="radio-group">
+                        <div class="radio-item">
+                            <input type="radio" id="aodType" name="inversionType" value="aod" checked onchange="updateForm()">
+                            <label for="aodType">AOD Inversion</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="ozoneType" name="inversionType" value="ozone" onchange="updateForm()">
+                            <label for="ozoneType">Ozone Inversion</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="wvType" name="inversionType" value="wv" onchange="updateForm()">
+                            <label for="wvType">Water Vapor (936nm)</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label class="form-label">Latitude</label>
+                    <input type="number" class="form-input" id="latitude" value="49.0" step="0.1">
+                </div>
+
+                <div class="form-row">
+                    <label class="form-label">Longitude</label>
+                    <input type="number" class="form-input" id="longitude" value="119.4" step="0.1">
+                </div>
+
+                <div class="form-row">
+                    <label class="form-label">Pressure (hPa)</label>
+                    <input type="number" class="form-input" id="pressure" value="840.0" step="1">
+                </div>
+
+                <div class="form-row" id="ozoneRow">
+                    <label class="form-label">Ozone Column Amount (DU)</label>
+                    <input type="number" class="form-input" id="ozone_du" value="300.0" step="1">
+                </div>
+
+                <!-- Algorithm options (QX/T 69-2024) -->
+                <div class="form-row algo-option" id="airmassRow">
+                    <label class="form-label">Air Mass Formula</label>
+                    <select class="form-input" id="airmass_method">
+                        <option value="kasten" selected>Kasten 1965 (QX/T 69-2024)</option>
+                        <option value="kasten_young">Kasten-Young 1989</option>
+                        <option value="young_irvine">Young-Irvine</option>
+                        <option value="simple">Simple 1/cosθ</option>
+                    </select>
+                </div>
+
+                <div class="form-row algo-option" id="rayleighRow">
+                    <label class="form-label">Rayleigh Formula</label>
+                    <select class="form-input" id="rayleigh_method">
+                        <option value="standard" selected>QX/T 69-2024 Eq.(7)</option>
+                        <option value="hansen">Hansen &amp; Travis 1974</option>
+                    </select>
+                </div>
+
+                <div class="form-row algo-option" id="gasCorrRow">
+                    <label class="form-label">Gas Absorption Correction</label>
+                    <select class="form-input" id="gas_correction">
+                        <option value="false" selected>Off (retrieved separately)</option>
+                        <option value="true">On (fixed column amounts)</option>
+                    </select>
+                </div>
+
+                <div class="form-row algo-option" id="langleyRow">
+                    <label class="form-label">Langley Calibration</label>
+                    <select class="form-input" id="langley_cal">
+                        <option value="true" selected>On (daily E0 fit, fallback to Wehrli)</option>
+                        <option value="false">Off (Wehrli 1985 E0)</option>
+                    </select>
+                </div>
+
+                <div class="form-row algo-option" id="calcModeRow">
+                    <label class="form-label">Calculation Mode</label>
+                    <select class="form-input" id="calc_mode">
+                        <option value="fast" selected>Fast (vectorized, quick overview)</option>
+                        <option value="slow">Slow (per-minute, detailed analysis)</option>
+                        <option value="both">Both (slow + fast comparison)</option>
+                    </select>
+                </div>
+
+                <div class="form-row algo-option" id="wvMethodRow" style="display: none;">
+                    <label class="form-label">WV Baseline Method</label>
+                    <select class="form-input" id="wv_method">
+                        <option value="standard" selected>QX/T 69-2024 Eq.(8)-(10) (τ aerosol+molecule)</option>
+                        <option value="aod_only">Pure AOD baseline</option>
+                    </select>
+                </div>
+
+                <div class="form-row algo-option" id="pwvCoeffRow" style="display: none;">
+                    <label class="form-label">PWV Coefficients (a / b)</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="number" class="form-input" id="pwv_a" value="0.585" step="0.001" title="PWV = (WVOD/a)^(1/b)，系数a">
+                        <input type="number" class="form-input" id="pwv_b" value="0.569" step="0.001" title="PWV = (WVOD/a)^(1/b)，系数b">
+                    </div>
+                </div>
+                
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="submitForm()" id="submitBtn">Start Inversion</button>
+                    <button class="btn btn-default" onclick="resetForm()">Reset</button>
+                </div>
+
+                <!-- 计算进度条 -->
+                <div id="progressArea" style="display:none; margin-top:15px;">
+                    <div style="display:flex; justify-content:space-between; font-size:13px; color:#606266; margin-bottom:5px;">
+                        <span id="progressStage">Queued</span>
+                        <span id="progressPct">0%</span>
+                    </div>
+                    <div style="background:#e4e7ed; border-radius:4px; height:14px; overflow:hidden;">
+                        <div id="progressBar" style="background:#409eff; height:100%; width:0%; transition:width 0.3s;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Result Display Card -->
+        <div class="card" id="resultCard" style="display: none;">
+            <div class="card-header">
+                <h3>Inversion Results</h3>
+            </div>
+            <div class="card-body">
+                <div class="result-info">
+                    <p><strong>Result ID:</strong> <span id="resultId"></span></p>
+                    <p><strong>Inversion Type:</strong> <span id="inversionType"></span></p>
+                    <p><strong>Data Date:</strong> <span id="dataDate"></span></p>
+                </div>
+                
+                <div class="btn-group">
+                    <button class="btn btn-success" onclick="saveExcel()">Save Excel</button>
+                    <button class="btn btn-primary" onclick="saveCharts()">Save Charts</button>
+                </div>
+                
+                <div id="resultContent">
+                    <!-- Dynamic content -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <p>? 2026 AOD Inversion System</p>
+    </div>
+    
+    <script>
+        let selectedFile = null;
+        let currentResult = null;
+        let currentType = 'aod';
+        
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                selectedFile = file;
+                document.getElementById('fileName').textContent = file.name;
+            }
+        }
+        
+        function updateForm() {
+            const type = document.querySelector('input[name="inversionType"]:checked').value;
+            currentType = type;
+            document.getElementById('ozoneRow').style.display = type === 'aod' ? 'block' : 'none';
+            // 算法选项：AOD反演显示全部；水汽反演只显示基线方法；臭氧反演不显示
+            document.getElementById('airmassRow').style.display = type === 'aod' ? 'block' : 'none';
+            document.getElementById('rayleighRow').style.display = type === 'aod' ? 'block' : 'none';
+            document.getElementById('gasCorrRow').style.display = type === 'aod' ? 'block' : 'none';
+            document.getElementById('wvMethodRow').style.display = type === 'wv' ? 'block' : 'none';
+            document.getElementById('pwvCoeffRow').style.display = type === 'wv' ? 'block' : 'none';
+        }
+        
+        async function submitForm() {
+            if (!selectedFile) {
+                alert('Please select DNI data file');
+                return;
+            }
+            
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Processing...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                formData.append('latitude', document.getElementById('latitude').value);
+                formData.append('longitude', document.getElementById('longitude').value);
+                formData.append('pressure', document.getElementById('pressure').value);
+                
+                let endpoint = '';
+                if (currentType === 'aod') {
+                    endpoint = '/aod-inversion';
+                    formData.append('ozone_du', document.getElementById('ozone_du').value);
+                    formData.append('airmass_method', document.getElementById('airmass_method').value);
+                    formData.append('rayleigh_method', document.getElementById('rayleigh_method').value);
+                    formData.append('gas_correction', document.getElementById('gas_correction').value);
+                    formData.append('langley_cal', document.getElementById('langley_cal').value);
+                    formData.append('calc_mode', document.getElementById('calc_mode').value);
+                } else if (currentType === 'wv') {
+                    endpoint = '/water-vapor';
+                    formData.append('wv_method', document.getElementById('wv_method').value);
+                    formData.append('pwv_a', document.getElementById('pwv_a').value);
+                    formData.append('pwv_b', document.getElementById('pwv_b').value);
+                    formData.append('langley_cal', document.getElementById('langley_cal').value);
+                    formData.append('calc_mode', document.getElementById('calc_mode').value);
+                } else {
+                    endpoint = '/process-dni';
+                }
+                
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'started' && data.task_id) {
+                    // 后台任务模式：轮询进度
+                    document.getElementById('progressArea').style.display = 'block';
+                    const result = await pollTaskStatus(data.task_id);
+                    if (result && result.status === 'success') {
+                        currentResult = result;
+                        displayResults(result);
+                    } else if (result) {
+                        alert('Processing failed: ' + (result.message || 'unknown error'));
+                    }
+                } else if (data.status === 'success') {
+                    currentResult = data;
+                    displayResults(data);
+                } else {
+                    alert('Processing failed: ' + data.message);
+                }
+            } catch (error) {
+                alert('Request failed: ' + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Start Inversion';
+                document.getElementById('progressArea').style.display = 'none';
+            }
+        }
+
+        // 轮询后台任务进度，每800ms查询一次
+        function pollTaskStatus(taskId) {
+            return new Promise((resolve) => {
+                const bar = document.getElementById('progressBar');
+                const pct = document.getElementById('progressPct');
+                const stageEl = document.getElementById('progressStage');
+                const timer = setInterval(async () => {
+                    try {
+                        const resp = await fetch('/task-status/' + taskId);
+                        const task = await resp.json();
+                        if (task.status === 'running') {
+                            bar.style.width = task.progress + '%';
+                            pct.textContent = Math.round(task.progress) + '%';
+                            stageEl.textContent = task.stage || '';
+                        } else if (task.status === 'done') {
+                            clearInterval(timer);
+                            bar.style.width = '100%';
+                            pct.textContent = '100%';
+                            stageEl.textContent = 'Done';
+                            resolve(task.response);
+                        } else if (task.status === 'error') {
+                            clearInterval(timer);
+                            resolve({ status: 'error', message: task.message });
+                        }
+                    } catch (e) {
+                        clearInterval(timer);
+                        resolve({ status: 'error', message: e.message });
+                    }
+                }, 800);
+            });
+        }
+        
+        function displayResults(data) {
+            document.getElementById('resultCard').style.display = 'block';
+            document.getElementById('resultId').textContent = data.result_id;
+            const typeLabels = {aod: 'AOD Inversion', ozone: 'Ozone Inversion', wv: 'Water Vapor (936nm)'};
+            document.getElementById('inversionType').textContent = typeLabels[currentType] || currentType;
+            document.getElementById('dataDate').textContent = (data.result && data.result.data_date) ? data.result.data_date : 'Unknown';
+            // 缓存扁平化后的结果数据，供图表重绘（如纵轴切换）使用
+            window.currentResult = data.result;
+            
+            const resultContent = document.getElementById('resultContent');
+            
+            if (currentType === 'aod') {
+                resultContent.innerHTML = `
+                    <div class="tabs">
+                        <div class="tab-item active" onclick="switchTab('time-series')">Time Series</div>
+                        <div class="tab-item" onclick="switchTab('wavelength')">Wavelength Curve</div>
+                        <div class="tab-item" onclick="switchTab('data')">Raw Data</div>
+                        <div class="tab-item" onclick="switchTab('data-view')">Data View</div>
+                    </div>
+                    
+                    <div id="time-series" class="tab-content active">
+                        <div id="timeSeriesChart" class="chart-container"></div>
+                    </div>
+                    
+                    <div id="wavelength" class="tab-content">
+                        <div style="margin-bottom:8px;">
+                            <label style="font-size:13px;color:#606266;">Y Axis:&nbsp;</label>
+                            <select id="yAxisScale" style="padding:4px 8px;font-size:13px;" onchange="renderWavelengthChart(window.currentResult)">
+                                <option value="linear" selected>Linear</option>
+                                <option value="log">Logarithmic</option>
+                            </select>
+                            <span style="font-size:12px;color:#909399;margin-left:12px;">○ 圆圈标记典型波长 (340/380/400/440/500/675/870/936/1020nm)</span>
+                        </div>
+                        <div id="wavelengthChart" class="chart-container"></div>
+                    </div>
+
+                    <div id="data" class="tab-content">
+                        <div id="dataTable"></div>
+                    </div>
+
+                    <div id="data-view" class="tab-content">
+                        <h3 style="margin:10px 0 6px; color:#4a5a8a;">1. Hourly Direct Solar Irradiance Spectra</h3>
+                        <div id="rawSpectrumChart" class="chart-container"></div>
+                        <h3 style="margin:18px 0 6px; color:#4a5a8a;">2. Irradiance Time Series at Key Wavelengths</h3>
+                        <div id="irrTSChart" class="chart-container"></div>
+                        <h3 style="margin:18px 0 6px; color:#4a5a8a;">3. Langley Calibration Fits (color = used, gray = excluded)</h3>
+                        <div id="langleyGrid" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                    </div>
+                `;
+                
+                // ???MutationObserver????DOM??????????????????
+            const observer = new MutationObserver((mutations) => {
+                // ?????????????????
+                const resultContent = document.getElementById('resultContent');
+                if (resultContent && resultContent.offsetWidth > 0) {
+                    // ?????
+                    observer.disconnect();
+                    
+                    // ??????
+                    setTimeout(() => {
+                        renderTimeSeriesChart(data.result);
+                        renderWavelengthChart(data.result);
+                        renderDataTable(data.result);
+                    }, 100);
+                }
+            });
+            
+            // ???body??????
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+            
+            // ????????????Observer??????
+            setTimeout(() => {
+                observer.disconnect();
+                // ??????????
+                renderTimeSeriesChart(data.result);
+                renderWavelengthChart(data.result);
+                renderDataTable(data.result);
+            }, 2000);
+            } else if (currentType === 'wv') {
+                resultContent.innerHTML = `
+                    <div class="tabs">
+                        <div class="tab-item active" onclick="switchTab('wv-time-series')">WVOD Time Series</div>
+                        <div class="tab-item" onclick="switchTab('pwv-time-series')">PWV Time Series</div>
+                        <div class="tab-item" onclick="switchTab('wv-data')">Raw Data</div>
+                        <div class="tab-item" onclick="switchTab('data-view')">Data View</div>
+                    </div>
+
+                    <div id="wv-time-series" class="tab-content active">
+                        <div id="wvChart" class="chart-container"></div>
+                    </div>
+
+                    <div id="pwv-time-series" class="tab-content">
+                        <div id="pwvChart" class="chart-container"></div>
+                    </div>
+
+                    <div id="wv-data" class="tab-content">
+                        <div id="wvDataTable"></div>
+                    </div>
+
+                    <div id="data-view" class="tab-content">
+                        <h3 style="margin:10px 0 6px; color:#4a5a8a;">1. Hourly Direct Solar Irradiance Spectra</h3>
+                        <div id="rawSpectrumChart" class="chart-container"></div>
+                        <h3 style="margin:18px 0 6px; color:#4a5a8a;">2. Irradiance Time Series at Key Wavelengths</h3>
+                        <div id="irrTSChart" class="chart-container"></div>
+                        <h3 style="margin:18px 0 6px; color:#4a5a8a;">3. Langley Calibration Fits (color = used, gray = excluded)</h3>
+                        <div id="langleyGrid" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                    </div>
+                `;
+
+                setTimeout(() => {
+                    renderWVChart(data.result);
+                    renderPWVChart(data.result);
+                    renderWVDataTable(data.result);
+                }, 100);
+            } else {
+                resultContent.innerHTML = `
+                    <div class="tabs">
+                        <div class="tab-item active" onclick="switchTab('ozone-time-series')">Ozone Time Series</div>
+                        <div class="tab-item" onclick="switchTab('ozone-data')">Raw Data</div>
+                    </div>
+                    
+                    <div id="ozone-time-series" class="tab-content active">
+                        <div id="ozoneChart" class="chart-container"></div>
+                    </div>
+                    
+                    <div id="ozone-data" class="tab-content">
+                        <div id="ozoneDataTable"></div>
+                    </div>
+                `;
+                
+                setTimeout(() => {
+                    renderOzoneChart(data.result);
+                    renderOzoneDataTable(data.result);
+                }, 100);
+            }
+        }
+        
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-item').forEach(item => item.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+
+            // Data View 标签页按需渲染（保证容器可见、图表尺寸正确）
+            if (tabId === 'data-view' && window.currentResult && window.currentResult.raw_view) {
+                setTimeout(() => renderDataView(window.currentResult.raw_view), 50);
+            }
+            
+            // Resize charts when tab is switched
+            setTimeout(() => {
+                if (currentResult) {
+                    const timeSeriesChart = echarts.getInstanceByDom(document.getElementById('timeSeriesChart'));
+                    const wavelengthChart = echarts.getInstanceByDom(document.getElementById('wavelengthChart'));
+                    const wvChart = echarts.getInstanceByDom(document.getElementById('wvChart'));
+                    const pwvChart = echarts.getInstanceByDom(document.getElementById('pwvChart'));
+
+                    if (timeSeriesChart) {
+                        timeSeriesChart.resize();
+                    }
+                    if (wavelengthChart) {
+                        wavelengthChart.resize();
+                    }
+                    if (wvChart) {
+                        wvChart.resize();
+                    }
+                    if (pwvChart) {
+                        pwvChart.resize();
+                    }
+                }
+            }, 100);
+        }
+        
+        function renderTimeSeriesChart(data) {
+            const chart = echarts.init(document.getElementById('timeSeriesChart'));
+            
+            const option = {
+                title: {
+                    text: 'AOD Time Series' + (data.data_date ? ' (' + data.data_date + ')' : ''),
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'axis'
+                },
+                legend: {
+                    data: ['AOD 440nm', 'AOD 500nm', 'AOD 675nm', 'AOD 870nm'],
+                    bottom: 0
+                },
+                dataZoom: [
+                    {
+                        type: 'inside',
+                        start: 10,
+                        end: 90
+                    },
+                    {
+                        start: 10,
+                        end: 90,
+                        height: 30,
+                        bottom: 10
+                    }
+                ],
+                xAxis: {
+                    type: 'category',
+                    data: data.time || [],
+                    axisLabel: {
+                        rotate: 45
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: 'AOD',
+                    min: 0
+                },
+                series: (function() {
+                    const base = [
+                        { name: 'AOD 440nm', type: 'line', data: data.aod_440 || [], smooth: true },
+                        { name: 'AOD 500nm', type: 'line', data: data.aod_500 || [], smooth: true },
+                        { name: 'AOD 675nm', type: 'line', data: data.aod_675 || [], smooth: true },
+                        { name: 'AOD 870nm', type: 'line', data: data.aod_870 || [], smooth: true }
+                    ];
+                    // both 模式：追加快速版虚线对比
+                    if (data.aod_440_fast) {
+                        ['440', '500', '675', '870'].forEach(function(wl) {
+                            base.push({
+                                name: 'AOD ' + wl + 'nm (fast)',
+                                type: 'line',
+                                data: data['aod_' + wl + '_fast'] || [],
+                                smooth: true,
+                                lineStyle: { type: 'dashed' },
+                                symbol: 'none'
+                            });
+                        });
+                    }
+                    return base;
+                })()
+            };
+
+            // 图例包含快速版系列
+            if (data.aod_440_fast) {
+                option.legend.data = option.series.map(function(s) { return s.name; });
+            }
+
+            chart.setOption(option);
+        }
+        
+        function renderWavelengthChart(data) {
+            if (!data) return;
+            const container = document.getElementById('wavelengthChart');
+
+            // ?????????????????
+            container.style.width = '100%';
+            container.style.height = '500px';
+
+            // 复用已存在的图表实例（重复init会有警告且可能返回旧实例）
+            let chart = echarts.getInstanceByDom(container);
+            if (!chart) {
+                chart = echarts.init(container);
+            }
+            
+            // Get wavelengths from data
+            const wavelengths = data.wavelengths || [];
+            
+            console.log('Wavelengths length:', wavelengths.length);
+            console.log('Wavelength series count:', (data.wavelength_series || []).length);
+            
+            if (data.wavelength_series && data.wavelength_series.length > 0) {
+                console.log('First series length:', data.wavelength_series[0].length);
+            }
+            
+            // Create series data - downsample if necessary
+            // 典型波长（圆圈标记）：取原始数组中最近的波长点
+            const typicalWls = [340, 380, 400, 440, 500, 675, 870, 936, 1020];
+            const seriesData = (data.wavelength_series || []).map((series, index) => {
+                // Ensure series and wavelengths have the same length
+                const dataPoints = [];
+
+                // Downsample data to improve performance and clarity
+                const step = Math.max(1, Math.floor(wavelengths.length / 200)); // Limit to ~200 points
+
+                for (let i = 0; i < wavelengths.length && i < series.length; i += step) {
+                    if (series[i] !== null && series[i] !== undefined && !isNaN(series[i])) {
+                        dataPoints.push([wavelengths[i], series[i]]);
+                    }
+                }
+
+                // 典型波长圆圈标记（markPoint 继承系列颜色，不占图例）
+                const markData = [];
+                typicalWls.forEach(function(tw) {
+                    let bestIdx = -1, bestDiff = Infinity;
+                    for (let i = 0; i < wavelengths.length; i++) {
+                        const diff = Math.abs(wavelengths[i] - tw);
+                        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+                    }
+                    if (bestIdx >= 0 && bestDiff < 5 && bestIdx < series.length) {
+                        const v = series[bestIdx];
+                        if (v !== null && v !== undefined && !isNaN(v) && v > 0) {
+                            markData.push({ coord: [wavelengths[bestIdx], v] });
+                        }
+                    }
+                });
+
+                return {
+                    name: data.times[index] || `Series ${index + 1}`,
+                    type: 'line',
+                    data: dataPoints,
+                    smooth: true,
+                    symbol: 'none', // ?????????????????????
+                    lineStyle: {
+                        width: 1.5
+                    },
+                    markPoint: {
+                        symbol: 'circle',
+                        symbolSize: 9,
+                        label: { show: false },
+                        itemStyle: { borderColor: '#fff', borderWidth: 1 },
+                        data: markData
+                    }
+                };
+            });
+            
+            console.log('Series data created:', seriesData.length, 'series');
+            
+            const option = {
+                title: {
+                    text: 'Hyperspectral AOD Spectrum' + (data.data_date ? ' (' + data.data_date + ')' : ''),
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function(params) {
+                        params = params.filter(p => p.seriesType === 'line' && p.value && p.value[1] !== undefined);
+                        if (params.length === 0) return '';
+                        let result = `${params[0].name}<br/>`;
+                        params.forEach(param => {
+                            result += `${param.marker}${param.seriesName}: ${param.value[1].toFixed(4)}<br/>`;
+                        });
+                        result += `Wavelength: ${params[0].value[0].toFixed(1)} nm`;
+                        return result;
+                    }
+                },
+                legend: {
+                    data: data.times || [],
+                    bottom: 0,
+                    type: 'scroll', // ????????????????????????
+                    pageIconSize: 10,
+                    pageTextStyle: {
+                        fontSize: 10
+                    }
+                },
+                dataZoom: [
+                    {
+                        type: 'inside',
+                        start: 15,
+                        end: 85
+                    },
+                    {
+                        start: 15,
+                        end: 85,
+                        height: 30,
+                        bottom: 65
+                    }
+                ],
+                xAxis: {
+                    type: 'value',
+                    name: 'Wavelength (nm)',
+                    nameLocation: 'middle',
+                    nameGap: 35,
+                    nameTextStyle: {
+                        fontSize: 12
+                    },
+                    min: 300,
+                    max: 1100,
+                    axisLabel: {
+                        interval: 100,
+                        formatter: '{value} nm',
+                        rotate: 0,
+                        fontSize: 12
+                    },
+                    splitLine: {
+                        show: true,
+                        lineStyle: {
+                            type: 'dashed'
+                        }
+                    },
+                    axisTick: {
+                        show: true,
+                        interval: 100
+                    },
+                    axisLine: {
+                        show: true
+                    }
+                },
+                yAxis: (function() {
+                    // 对数/线性纵轴切换
+                    const scaleEl = document.getElementById('yAxisScale');
+                    const scale = scaleEl ? scaleEl.value : 'linear';
+                    const base = {
+                        name: 'AOD',
+                        splitLine: {
+                            show: true,
+                            lineStyle: {
+                                type: 'dashed'
+                            }
+                        }
+                    };
+                    if (scale === 'log') {
+                        base.type = 'log';
+                        base.min = 0.001;
+                    } else {
+                        base.type = 'value';
+                        base.min = 0;
+                    }
+                    return base;
+                })(),
+                grid: {
+                    left: '5%',
+                    right: '5%',
+                    bottom: '15%', // ???????????????????
+                    top: '15%',
+                    containLabel: true
+                },
+                series: seriesData
+            };
+
+            // notMerge=true：强制重建坐标系（线性/对数纵轴切换在合并模式下不生效）
+            chart.setOption(option, true);
+            
+            // ?????????????????????????
+            setTimeout(() => {
+                chart.resize();
+            }, 100);
+            
+            // ?????????????
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+        
+        function renderDataTable(data) {
+            const table = document.getElementById('dataTable');
+            
+            if (!data.time || data.time.length === 0) {
+                table.innerHTML = '<div class="empty-state">No data available</div>';
+                return;
+            }
+            
+            let html = '<table class="table"><thead><tr><th>Time</th><th>AOD 440nm</th><th>AOD 500nm</th><th>AOD 675nm</th><th>AOD 870nm</th></tr></thead><tbody>';
+            
+            for (let i = 0; i < data.time.length; i++) {
+                html += `<tr>
+                    <td>${data.time[i]}</td>
+                    <td>${(data.aod_440[i] || 0).toFixed(4)}</td>
+                    <td>${(data.aod_500[i] || 0).toFixed(4)}</td>
+                    <td>${(data.aod_675[i] || 0).toFixed(4)}</td>
+                    <td>${(data.aod_870[i] || 0).toFixed(4)}</td>
+                </tr>`;
+            }
+            
+            html += '</tbody></table>';
+            table.innerHTML = html;
+        }
+        
+        function renderOzoneChart(data) {
+            const chart = echarts.init(document.getElementById('ozoneChart'));
+            
+            const option = {
+                title: {
+                    text: 'Ozone Column Amount Time Series',
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'axis'
+                },
+                legend: {
+                    data: ['Average Ozone', '305nm', '310nm', '320nm', '340nm', '360nm', '380nm'],
+                    bottom: 0
+                },
+                xAxis: {
+                    type: 'category',
+                    data: data.time || [],
+                    axisLabel: {
+                        rotate: 45
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: 'Ozone Column Amount (DU)',
+                    min: 0
+                },
+                series: [
+                    {
+                        name: 'Average Ozone',
+                        type: 'line',
+                        data: data.ozone_avg || [],
+                        smooth: true
+                    },
+                    {
+                        name: '305nm',
+                        type: 'line',
+                        data: data.ozone_305 || [],
+                        smooth: true
+                    },
+                    {
+                        name: '310nm',
+                        type: 'line',
+                        data: data.ozone_310 || [],
+                        smooth: true
+                    },
+                    {
+                        name: '320nm',
+                        type: 'line',
+                        data: data.ozone_320 || [],
+                        smooth: true
+                    },
+                    {
+                        name: '340nm',
+                        type: 'line',
+                        data: data.ozone_340 || [],
+                        smooth: true
+                    },
+                    {
+                        name: '360nm',
+                        type: 'line',
+                        data: data.ozone_360 || [],
+                        smooth: true
+                    },
+                    {
+                        name: '380nm',
+                        type: 'line',
+                        data: data.ozone_380 || [],
+                        smooth: true
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+        }
+        
+        function renderOzoneDataTable(data) {
+            const table = document.getElementById('ozoneDataTable');
+            
+            if (!data.time || data.time.length === 0) {
+                table.innerHTML = '<div class="empty-state">No data available</div>';
+                return;
+            }
+            
+            let html = '<table class="table"><thead><tr><th>Time</th><th>Average Ozone</th><th>305nm</th><th>310nm</th><th>320nm</th><th>340nm</th><th>360nm</th><th>380nm</th></tr></thead><tbody>';
+            
+            for (let i = 0; i < data.time.length; i++) {
+                html += `<tr>
+                    <td>${data.time[i]}</td>
+                    <td>${(data.ozone_avg[i] || 0).toFixed(2)}</td>
+                    <td>${(data.ozone_305[i] || 0).toFixed(2)}</td>
+                    <td>${(data.ozone_310[i] || 0).toFixed(2)}</td>
+                    <td>${(data.ozone_320[i] || 0).toFixed(2)}</td>
+                    <td>${(data.ozone_340[i] || 0).toFixed(2)}</td>
+                    <td>${(data.ozone_360[i] || 0).toFixed(2)}</td>
+                    <td>${(data.ozone_380[i] || 0).toFixed(2)}</td>
+                </tr>`;
+            }
+            
+            html += '</tbody></table>';
+            table.innerHTML = html;
+        }
+        
+        function renderWVChart(data) {
+            const chart = echarts.init(document.getElementById('wvChart'));
+
+            const option = {
+                title: {
+                    text: 'Water Vapor Optical Depth (936nm) Time Series' + (data.data_date ? ' (' + data.data_date + ')' : ''),
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'axis'
+                },
+                legend: {
+                    data: ['WVOD 936nm', 'AOD 870nm', 'AOD 1020nm'],
+                    bottom: 0
+                },
+                dataZoom: [
+                    {
+                        type: 'inside',
+                        start: 10,
+                        end: 90
+                    },
+                    {
+                        type: 'slider',
+                        start: 10,
+                        end: 90,
+                        bottom: 30
+                    }
+                ],
+                xAxis: {
+                    type: 'category',
+                    data: data.time || [],
+                    axisLabel: {
+                        rotate: 45
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: 'Optical Depth',
+                    min: 0
+                },
+                series: (function() {
+                    const base = [
+                        { name: 'WVOD 936nm', type: 'line', data: data.wvod_936 || [], smooth: true, itemStyle: { color: '#409eff' } },
+                        { name: 'AOD 870nm', type: 'line', data: data.aod_870 || [], smooth: true, itemStyle: { color: '#67c23a' } },
+                        { name: 'AOD 1020nm', type: 'line', data: data.aod_1020 || [], smooth: true, itemStyle: { color: '#e6a23c' } }
+                    ];
+                    // both 模式：追加快速版虚线对比
+                    if (data.wvod_936_fast) {
+                        base.push({ name: 'WVOD 936nm (fast)', type: 'line', data: data.wvod_936_fast, smooth: true, lineStyle: { type: 'dashed', color: '#409eff' }, itemStyle: { color: '#409eff' }, symbol: 'none' });
+                        base.push({ name: 'AOD 870nm (fast)', type: 'line', data: data.aod_870_fast || [], smooth: true, lineStyle: { type: 'dashed', color: '#67c23a' }, itemStyle: { color: '#67c23a' }, symbol: 'none' });
+                        base.push({ name: 'AOD 1020nm (fast)', type: 'line', data: data.aod_1020_fast || [], smooth: true, lineStyle: { type: 'dashed', color: '#e6a23c' }, itemStyle: { color: '#e6a23c' }, symbol: 'none' });
+                    }
+                    return base;
+                })()
+            };
+
+            // 图例包含快速版系列
+            if (data.wvod_936_fast) {
+                option.legend.data = option.series.map(function(s) { return s.name; });
+            }
+
+            chart.setOption(option);
+        }
+
+        // PWV 独立子图（水汽结果）
+        function renderPWVChart(data) {
+            const dom = document.getElementById('pwvChart');
+            if (!dom) return;
+            const chart = echarts.init(dom);
+
+            const series = [
+                { name: 'PWV (mm)', type: 'line', data: data.pwv_mm || [], smooth: true, itemStyle: { color: '#9b59b6' } }
+            ];
+            if (data.pwv_mm_fast) {
+                series.push({ name: 'PWV (mm) (fast)', type: 'line', data: data.pwv_mm_fast, smooth: true, lineStyle: { type: 'dashed', color: '#9b59b6' }, itemStyle: { color: '#9b59b6' }, symbol: 'none' });
+            }
+
+            const option = {
+                title: {
+                    text: `Precipitable Water Vapor Time Series${data.data_date ? ' (' + data.data_date + ')' : ''}`,
+                    left: 'center',
+                    textStyle: { fontSize: 16, fontWeight: 600, color: '#303133' }
+                },
+                tooltip: { trigger: 'axis' },
+                legend: { data: series.map(s => s.name), bottom: 0 },
+                dataZoom: [
+                    { type: 'inside', start: 0, end: 100 },
+                    { type: 'slider', start: 0, end: 100, height: 20, bottom: 30 }
+                ],
+                grid: { left: '8%', right: '5%', bottom: '18%', top: '15%' },
+                xAxis: {
+                    type: 'category',
+                    data: data.time || [],
+                    axisLabel: { rotate: 45 }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: 'PWV (mm)',
+                    min: 0
+                },
+                series: series
+            };
+
+            chart.setOption(option, true);
+        }
+
+        // ============ Data View：原始光谱 / 特征波长辐照度 / Langley拟合 ============
+        function renderDataView(view) {
+            if (!view) return;
+            renderRawSpectrum(view);
+            renderIrrTimeSeries(view);
+            renderLangleyGrid(view);
+        }
+
+        // 1. 整点直接辐照度光谱
+        function renderRawSpectrum(view) {
+            const dom = document.getElementById('rawSpectrumChart');
+            if (!dom) return;
+            const chart = echarts.getInstanceByDom(dom) || echarts.init(dom);
+            const palette = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#ea7ccc','#4b565e','#c23531','#2f4554'];
+            const series = (view.hourly_spectra || []).map((h, i) => ({
+                name: h.label, type: 'line',
+                data: view.wavelengths.map((w, j) => [w, h.values[j]]),
+                showSymbol: false, lineStyle: { width: 1.5 },
+                itemStyle: { color: palette[i % palette.length] }
+            }));
+            chart.setOption({
+                title: { text: 'Direct Solar Irradiance Spectra (hourly)', left: 'center', textStyle: { fontSize: 14 } },
+                tooltip: { trigger: 'axis' },
+                legend: { bottom: 0, type: 'scroll' },
+                grid: { left: '10%', right: '4%', bottom: '18%', top: '12%' },
+                xAxis: { type: 'value', name: 'Wavelength (nm)', min: 'dataMin', max: 'dataMax' },
+                yAxis: { type: 'value', name: 'Irradiance', min: 0 },
+                dataZoom: [{ type: 'inside' }],
+                series: series
+            }, true);
+        }
+
+        // 2. 特征波长辐照度时间序列（横轴带范围调节）
+        function renderIrrTimeSeries(view) {
+            const dom = document.getElementById('irrTSChart');
+            if (!dom) return;
+            const chart = echarts.getInstanceByDom(dom) || echarts.init(dom);
+            const series = Object.keys(view.irr_timeseries || {}).map(k => ({
+                name: k + 'nm', type: 'line', data: view.irr_timeseries[k],
+                showSymbol: false, smooth: false, lineStyle: { width: 1.2 }
+            }));
+            chart.setOption({
+                title: { text: 'Irradiance Time Series at Key Wavelengths', left: 'center', textStyle: { fontSize: 14 } },
+                tooltip: { trigger: 'axis' },
+                legend: { bottom: 0, type: 'scroll' },
+                grid: { left: '8%', right: '4%', bottom: '22%', top: '12%' },
+                xAxis: { type: 'category', data: view.time || [] },
+                yAxis: { type: 'value', name: 'Irradiance', min: 0 },
+                dataZoom: [{ type: 'inside', start: 0, end: 100 }, { type: 'slider', start: 0, end: 100, height: 20, bottom: 35 }],
+                series: series
+            }, true);
+        }
+
+        // 3. Langley 拟合散点图（彩色=参与拟合，灰色=被剔除；含拟合方程与R²）
+        // 纵轴动态约束：顶部为 V0（回归截距，拟合线延长到 m=0 与纵轴交汇），
+        // 底部为拟合数据最低点再向下扩展拟合数据纵跨度的 30%；横轴固定 0–10
+        function renderLangleyGrid(view) {
+            const grid = document.getElementById('langleyGrid');
+            if (!grid) return;
+            // 先销毁旧实例，避免重叠/泄漏
+            Array.from(grid.children).forEach(c => {
+                const inst = echarts.getInstanceByDom(c);
+                if (inst) inst.dispose();
+            });
+            grid.innerHTML = '';
+            const lg = view.langley || {};
+            const wls = ['340', '380', '400', '440', '500', '675', '870', '936', '1020'];
+            const cells = [];
+            wls.forEach(wl => {
+                const d = lg[wl];
+                if (!d) return;
+                const cell = document.createElement('div');
+                cell.style.cssText = 'width:calc(33.333% - 6px); height:250px; box-sizing:border-box; overflow:hidden;';
+                grid.appendChild(cell);
+                cells.push({ cell: cell, d: d, wl: wl });
+            });
+            if (cells.length === 0) {
+                grid.innerHTML = '<div style="color:#909399; padding:20px;">No Langley calibration data (Langley Calibration is Off or all wavelengths failed).</div>';
+                return;
+            }
+            // 布局完成后再初始化图表，保证宽度正确
+            requestAnimationFrame(() => {
+                cells.forEach(({ cell, d, wl }) => {
+                    const chart = echarts.init(cell);
+
+                    const usedPts = [], exclPts = [];
+                    for (let i = 0; i < d.m.length; i++) {
+                        if (d.m[i] === null || d.y[i] === null) continue;
+                        (d.used[i] ? usedPts : exclPts).push([d.m[i], d.y[i]]);
+                    }
+                    const series = [
+                        { name: 'excluded', type: 'scatter', data: exclPts, symbolSize: 5, itemStyle: { color: '#c0c4cc' } },
+                        { name: 'used', type: 'scatter', data: usedPts, symbolSize: 6, itemStyle: { color: '#409eff' } }
+                    ];
+                    // 纵轴范围（对齐到自动刻度间隔的整数倍）：
+                    // 1) 按 ECharts 自动刻度规则（约5个刻度、间隔取1/2/5×10^n）估计最小刻度间隔 step
+                    // 2) 上端 = 自 V0 向上取最近的 step 整数倍
+                    // 3) 下端 = 定标最低点 − (V0 − 定标最高点) 的对称长度，再向下取最近的 step 整数倍
+                    function niceStep(range, targetTicks) {
+                        const raw = Math.abs(range) / (targetTicks || 5);
+                        if (!(raw > 0)) return 0.5;
+                        const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+                        const norm = raw / mag;
+                        let s;
+                        if (norm < 1.5) s = 1; else if (norm < 3) s = 2; else if (norm < 7) s = 5; else s = 10;
+                        return s * mag;
+                    }
+                    let yMax = 0, yMin = -4, step = 0.5;
+                    if (d.intercept !== null && d.intercept !== undefined && usedPts.length > 0) {
+                        const ys = usedPts.map(p => p[1]);
+                        const lo = Math.min(...ys), hi = Math.max(...ys);
+                        const v0 = d.intercept;
+                        const refLen = Math.max(v0 - hi, 0.1);  // 定标最高点到 V0 的纵轴长度（下限保护）
+                        // 先按原始跨度估计 step，取整后得到新跨度再精修一次
+                        step = niceStep(v0 - (lo - refLen), 5);
+                        yMax = Math.ceil(v0 / step) * step;
+                        yMin = Math.floor((lo - refLen) / step) * step;
+                        step = niceStep(yMax - yMin, 5);
+                        yMax = Math.ceil(v0 / step) * step;
+                        yMin = Math.floor((lo - refLen) / step) * step;
+                    }
+                    const decimals = step < 1 ? Math.max(1, -Math.floor(Math.log10(step))) : 0;
+                    // 拟合线延长到 m=0（纵轴交点即 V0）
+                    if (d.slope !== null && d.intercept !== null && usedPts.length > 0) {
+                        const xs = usedPts.map(p => p[0]);
+                        const x1 = Math.max(...xs);
+                        series.push({
+                            name: 'fit', type: 'line', showSymbol: false,
+                            data: [[0, d.intercept], [x1, d.intercept + d.slope * x1]],
+                            lineStyle: { color: '#e6a23c', width: 2 },
+                            markPoint: {
+                                symbol: 'circle', symbolSize: 8,
+                                itemStyle: { color: '#e6a23c', borderColor: '#fff', borderWidth: 1.5 },
+                                label: { show: true, formatter: 'V0', fontSize: 10, color: '#e6a23c', position: 'top' },
+                                data: [{ coord: [0, d.intercept] }]
+                            }
+                        });
+                    }
+                    const eq = (d.slope !== null && d.intercept !== null)
+                        ? `y = ${d.intercept.toFixed(3)} ${d.slope >= 0 ? '+' : '−'} ${Math.abs(d.slope).toFixed(3)}·m   R²=${d.r2 !== null ? Number(d.r2).toFixed(4) : '-'}`
+                        : 'fit failed';
+                    chart.setOption({
+                        title: {
+                            text: `${wl}nm (${d.segment})${d.success ? '' : ' [below R² threshold]'}`,
+                            subtext: eq,
+                            left: 'center', textStyle: { fontSize: 13 }, subtextStyle: { fontSize: 11, color: '#e6a23c' }
+                        },
+                        tooltip: { trigger: 'item' },
+                        grid: { left: 52, right: 14, bottom: 32, top: 52 },
+                        xAxis: { type: 'value', name: 'm', nameTextStyle: { fontSize: 10 }, min: 0, max: 10 },
+                        yAxis: {
+                            type: 'value', name: 'ln(E·R²)', nameTextStyle: { fontSize: 10 },
+                            min: yMin, max: yMax, interval: step,
+                            axisLabel: { formatter: v => Number(v.toFixed(decimals)).toString() }
+                        },
+                        series: series
+                    }, true);
+                });
+            });
+        }
+
+        function renderWVDataTable(data) {
+            const table = document.getElementById('wvDataTable');
+
+            if (!data.time || data.time.length === 0) {
+                table.innerHTML = '<div class="empty-state">No data available</div>';
+                return;
+            }
+
+            let html = '<table class="table"><thead><tr><th>Time</th><th>WVOD 936nm</th><th>PWV (mm)</th><th>AOD 870nm</th><th>AOD 1020nm</th><th>Angstrom α</th><th>Baseline 936nm</th></tr></thead><tbody>';
+
+            for (let i = 0; i < data.time.length; i++) {
+                const fmt = (v) => (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(4);
+                html += `<tr>
+                    <td>${data.time[i]}</td>
+                    <td>${fmt(data.wvod_936[i])}</td>
+                    <td>${fmt(data.pwv_mm ? data.pwv_mm[i] : null)}</td>
+                    <td>${fmt(data.aod_870[i])}</td>
+                    <td>${fmt(data.aod_1020[i])}</td>
+                    <td>${fmt(data.angstrom_alpha[i])}</td>
+                    <td>${fmt(data.aod_baseline_936[i])}</td>
+                </tr>`;
+            }
+
+            html += '</tbody></table>';
+            table.innerHTML = html;
+        }
+
+        function resetForm() {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('fileName').textContent = '';
+            document.getElementById('latitude').value = '49.0';
+            document.getElementById('longitude').value = '119.4';
+            document.getElementById('pressure').value = '840.0';
+            document.getElementById('ozone_du').value = '300.0';
+            document.getElementById('resultCard').style.display = 'none';
+            selectedFile = null;
+            currentResult = null;
+        }
+        
+        function saveExcel() {
+            if (!currentResult) {
+                alert('No results to save!');
+                return;
+            }
+            
+            const resultId = document.getElementById('resultId').textContent;
+            const filename = selectedFile ? selectedFile.name.replace(/\.[^/.]+$/, "") : 'unknown';
+            
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('submitBtn').textContent = 'Saving...';
+            
+            fetch('/save-results', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: new URLSearchParams({
+                    'result_id': resultId,
+                    'filename': filename
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('submitBtn').textContent = 'Start Inversion';
+                
+                if (data.status === 'success') {
+                    alert('Results saved successfully!\nExcel file: ' + data.excel_path);
+                } else {
+                    alert('Failed to save results: ' + data.message);
+                }
+            })
+            .catch(error => {
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('submitBtn').textContent = 'Start Inversion';
+                alert('Error saving results: ' + error.message);
+            });
+        }
+        
+        function saveCharts() {
+            if (!currentResult) {
+                alert('No results to save!');
+                return;
+            }
+            
+            const resultId = document.getElementById('resultId').textContent;
+            const filename = selectedFile ? selectedFile.name.replace(/\.[^/.]+$/, "") : 'unknown';
+            
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('submitBtn').textContent = 'Saving Charts...';
+            
+            // Get chart instances
+            const timeSeriesChart = echarts.getInstanceByDom(document.getElementById('timeSeriesChart'));
+            const wavelengthChart = echarts.getInstanceByDom(document.getElementById('wavelengthChart'));
+            
+            // Create form data
+            const formData = new FormData();
+            formData.append('result_id', resultId);
+            formData.append('filename', filename);
+            
+            // Convert charts to base64 images
+            if (timeSeriesChart) {
+                const timeSeriesUrl = timeSeriesChart.getDataURL({
+                    type: 'png',
+                    pixelRatio: 2,
+                    backgroundColor: '#fff'
+                });
+                formData.append('time_series_chart', timeSeriesUrl.split(',')[1]);
+            }
+            
+            if (wavelengthChart) {
+                const wavelengthUrl = wavelengthChart.getDataURL({
+                    type: 'png',
+                    pixelRatio: 2,
+                    backgroundColor: '#fff'
+                });
+                formData.append('wavelength_chart', wavelengthUrl.split(',')[1]);
+            }
+            
+            fetch('/save-charts', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('submitBtn').textContent = 'Start Inversion';
+                
+                if (data.status === 'success') {
+                    alert('Charts saved successfully!\nCharts saved to: ' + data.charts_dir);
+                } else {
+                    alert('Failed to save charts: ' + data.message);
+                }
+            })
+            .catch(error => {
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('submitBtn').textContent = 'Start Inversion';
+                alert('Error saving charts: ' + (error.message || JSON.stringify(error)));
+            });
+        }
+    </script>
+</body>
+</html>

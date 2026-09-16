@@ -1,0 +1,22 @@
+# 默认忽略一切，仅白名单入库（精简版）
+/*
+!.gitignore
+!README.md
+
+# 核心代码
+!aod_inversion.py
+!process_dni_data.py
+!main.py
+!frontend_english.html
+!help.html
+!recompute_all.py
+!run_aod_service.py
+!start_all.bat
+!requirements.txt
+
+# 标准与理论文档
+!docs/
+
+# 常规排除
+__pycache__/
+*.pyc

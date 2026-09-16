@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>反演原理与算法说明 - AOD Inversion System</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+        background-color: #f5f7fa; color: #303133; line-height: 1.9;
+    }
+    .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white; padding: 18px 0;
+    }
+    .header-content { max-width: 1000px; margin: 0 auto; padding: 0 20px; }
+    .header h1 { font-size: 24px; font-weight: 600; }
+    .header p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+    .main { max-width: 1000px; margin: 20px auto 60px; padding: 0 20px; }
+    .card {
+        background: white; border-radius: 6px; padding: 24px 32px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08); margin-bottom: 20px;
+    }
+    h2 { font-size: 19px; color: #4a5a8a; border-left: 4px solid #667eea; padding-left: 10px; margin-bottom: 14px; }
+    h3 { font-size: 15px; color: #606266; margin: 18px 0 6px; }
+    .formula {
+        background: #f8f9fc; border: 1px solid #e4e7ed; border-radius: 4px;
+        padding: 12px 18px; margin: 10px 0; font-family: "Cambria Math", "Times New Roman", serif;
+        font-size: 16px; overflow-x: auto; white-space: nowrap;
+    }
+    .eq-no { float: right; color: #909399; font-size: 13px; }
+    .note { background: #fdf6ec; border-left: 4px solid #e6a23c; padding: 10px 14px; margin: 10px 0; font-size: 13px; color: #7a5b1e; }
+    .warn { background: #fef0f0; border-left: 4px solid #f56c6c; padding: 10px 14px; margin: 10px 0; font-size: 13px; color: #8a3a3a; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13px; }
+    th, td { border: 1px solid #dcdfe6; padding: 6px 10px; text-align: left; }
+    th { background: #f5f7fa; }
+    code { background: #f0f2f5; padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+    ul, ol { padding-left: 24px; }
+    li { margin: 4px 0; font-size: 14px; }
+    .ref { font-size: 12px; color: #909399; }
+</style>
+</head>
+<body>
+<div class="header">
+    <div class="header-content">
+        <h1>反演原理与算法说明</h1>
+        <p>依据：QX/T 69-2024《气溶胶光学厚度 太阳光度计法》及《气溶胶光学厚度和 Ångström 参数反演理论基础》</p>
+    </div>
+</div>
+
+<div class="main">
+
+<div class="card">
+    <h2>1. 总体反演链</h2>
+    <p>仪器测量太阳直接辐照度（或电压信号），按 Beer-Lambert 定律，地面信号与大气顶层信号的关系为：</p>
+    <div class="formula">E(λ) = E₀(λ) · esd · exp[−m · τ<sub>total</sub>(λ)]</div>
+    <p>其中 E₀(λ) 为大气顶层太阳辐照度，esd 为日地距离修正因子，m 为大气质量数，τ<sub>total</sub> 为大气总光学厚度。反演的分解链为：</p>
+    <div class="formula">τ<sub>total</sub> = τ<sub>aero</sub>(AOD) + τ<sub>R</sub>(瑞利) + τ<sub>ab</sub>(气体吸收)</div>
+    <ol>
+        <li>由实测信号计算各波长总光学厚度；</li>
+        <li>按气压计算并扣除瑞利散射光学厚度；</li>
+        <li>（可选）扣除气体吸收光学厚度（O₃、NO₂、CO₂、CH₄）；</li>
+        <li>剩余部分即为气溶胶光学厚度 AOD；</li>
+        <li>由 870/1020nm 建立基线，得到 936nm 水汽光学厚度 WVOD，再转换为可降水量 PWV。</li>
+    </ol>
+</div>
+
+<div class="card">
+    <h2>2. AOD 反演主公式（QX/T 69-2024 公式 1）</h2>
+    <div class="formula">τ<sub>aero</sub>(λ) = (1/m) · ln[a·V₀(λ)/V(λ)] − τ<sub>R</sub>(λ) − τ<sub>ab</sub>(λ)<span class="eq-no">(1)</span></div>
+    <ul>
+        <li>V(λ)：仪器实测信号（电压或辐照度，二者只差仪器校正系数，本质相同）；</li>
+        <li>V₀(λ)：大气顶层对应的仪器信号（定标常数），由 <strong>Langley 定标</strong>获得（见第 5 节）；</li>
+        <li>a：日地距离修正系数 a = (R/R̄)² = 1/esd；</li>
+        <li>τ<sub>R</sub>：瑞利散射光学厚度（第 3 节）；τ<sub>ab</sub>：气体吸收光学厚度（第 4 节）。</li>
+    </ul>
+    <p class="ref">注：软件内部实现采用等价的辐照度形式 τ<sub>total</sub> = −ln[E/(E₀·esd)]/m，E₀ 可由 Langley 定标给出或回退 Wehrli (1985) 标准光谱。</p>
+</div>
+
+<div class="card">
+    <h2>3. 大气质量数与太阳几何（QX/T 公式 4、6）</h2>
+    <h3>3.1 太阳赤纬（Spencer 傅里叶级数，公式 6）</h3>
+    <div class="formula">δ = 0.006918 − 0.399912cosΓ + 0.070257sinΓ − 0.006758cos2Γ + 0.000907sin2Γ − 0.002697cos3Γ + 0.00148sin3Γ<span class="eq-no">(6)</span></div>
+    <p>其中 Γ = 2π(d<sub>n</sub>−1)/365，d<sub>n</sub> 为积日。<strong>该公式输出为弧度</strong>。太阳天顶角 θ 由纬度、赤纬、时角按球面天文公式计算。</p>
+    <h3>3.2 大气质量数（Kasten 1965，公式 4）</h3>
+    <div class="formula">m = 1 / [cosθ + 0.15 × (93.885 − θ)<sup>−1.253</sup>]<span class="eq-no">(4)</span></div>
+    <p>θ 以度为单位。软件同时提供 Kasten &amp; Young (1989)、Young &amp; Irvine (1967)、简单 1/cosθ 三种可选公式（界面 Airmass Method 选项）。</p>
+</div>
+
+<div class="card">
+    <h2>4. 瑞利与气体吸收光学厚度（QX/T 公式 7、11–14）</h2>
+    <h3>4.1 瑞利散射（公式 7，默认）</h3>
+    <div class="formula">τ<sub>R</sub>(λ) = (P/P₀) × 0.0088 × λ<sup>−4.05</sup><span class="eq-no">(7)</span></div>
+    <p>λ 以 μm 为单位，P 为站点气压，P₀=1013.25 hPa。可选 Hansen &amp; Travis (1974) 公式（界面 Rayleigh Method 选项）。</p>
+    <h3>4.2 气体吸收（可选，默认关闭）</h3>
+    <div class="formula">τ<sub>O3</sub>(λ) = k<sub>O3</sub>(λ) · u<sub>O3</sub>&nbsp;&nbsp;;&nbsp;&nbsp;τ<sub>NO2</sub>(λ) = k<sub>NO2</sub>(λ) · u<sub>NO2</sub><span class="eq-no">(11)(12)</span></div>
+    <div class="formula">τ<sub>CO2</sub>(λ) = (P/P₀) × 0.0087 × λ<sup>−4.09</sup>&nbsp;&nbsp;;&nbsp;&nbsp;τ<sub>CH4</sub>(λ) = (P/P₀) × 0.0047 × λ<sup>−4.15</sup><span class="eq-no">(13)(14)</span></div>
+    <p>O₃/NO₂ 为吸收系数 × 柱含量；CO₂/CH₄ 为经验系数法。界面 Gas Correction 选项默认关闭（水汽反演要求不扣气体）。</p>
+    <div class="warn">注意：臭氧 Chappuis 带（450–750nm）目前未扣除（截面表仅覆盖紫外段），675nm 处 AOD 可能略偏高。</div>
+</div>
+
+<div class="card">
+    <h2>5. Langley 定标（V₀/E₀ 的获取）</h2>
+    <p>对主公式取对数得：</p>
+    <div class="formula">ln(V·R²) = ln(V₀·R̄²) − m · τ<sub>total</sub></div>
+    <p>在大气稳定、无云的时段内，ln(V·R²) 对 m 呈线性，回归直线<strong>外推到 m=0 的截距即为 V₀</strong>（斜率为该时段平均总光学厚度）。</p>
+    <h3>5.1 定标前提与数据清理</h3>
+    <p>Langley 法依赖"太阳无遮挡、大气条件稳定"假设，软件实施了两层清理：</p>
+    <ul>
+        <li><strong>云/扰动剔除</strong>：以表观总光学厚度的时间稳定性为判据，剔除相邻点跳变（默认 &gt;0.05）及滑动窗口内标准差过大（默认 &gt;0.02）的点（云遮挡瞬变、沙尘、大雾等）；</li>
+        <li><strong>时段收缩</strong>：整段拟合 R² 不达标时，递归二分缩小时段（最多至 1/4），在最长的稳定子时段内拟合；并可分别尝试上午/下午半日段，取 R² 较高者。</li>
+    </ul>
+    <h3>5.2 定标范围与回退</h3>
+    <ul>
+        <li>特征波长（340/380/400/440/500/675/870/936/1020nm）：用于 AOD 时间序列与 WVOD；</li>
+        <li>全波段（~800 个波长）：用于高光谱 AOD 谱；</li>
+        <li>定标失败的波长自动回退 Wehrli (1985) 大气顶层标准光谱值；全天多云/强扰动日可能全部回退，当日结果可信度降低，请结合定标报告判断。</li>
+    </ul>
+    <div class="warn">水汽/氧气强吸收带内（约 690–730、760、790–870、920–980nm）Langley 假设不成立（光学厚度随水汽含量变化），这些波段的光谱数据不可定量使用。</div>
+</div>
+
+<div class="card">
+    <h2>6. 936nm 水汽光学厚度（QX/T 公式 8–10）</h2>
+    <p>936nm 位于水汽吸收带内，870nm 与 1020nm 位于带外。用带外两点的"气溶胶+分子散射"光学厚度按幂律内插出 936nm 基线：</p>
+    <div class="formula">α = −ln[τ<sub>a+m</sub>(1020)/τ<sub>a+m</sub>(870)] / ln(1020/870)<span class="eq-no">(9)</span></div>
+    <div class="formula">τ<sub>a+m</sub>(936) = τ<sub>a+m</sub>(870) × (936/870)<sup>−α</sup><span class="eq-no">(10)</span></div>
+    <div class="formula">τ<sub>H2O</sub>(936) = τ(936) − τ<sub>a+m</sub>(936)<span class="eq-no">(8)</span></div>
+    <p>其中 τ<sub>a+m</sub> = AOD + τ<sub>R</sub>（标准方法，界面 WV Baseline Method = "QX/T 69-2024 Eq.(8)-(10)"）；另有纯 AOD 基线选项（"Pure AOD baseline"）：τ<sub>H2O</sub> = τ(936) − τ<sub>R</sub>(936) − AOD(870)×(936/870)<sup>−α</sup>。</p>
+</div>
+
+<div class="card">
+    <h2>7. 可降水量 PWV 的换算（非标准内容，文献经验公式）</h2>
+    <div class="formula">τ<sub>H2O</sub>(936) = a · (m · PWV)<sup>b</sup>&nbsp;&nbsp;⇒&nbsp;&nbsp;PWV[mm] = 10 × (WVOD/a)<sup>1/b</sup></div>
+    <p>PWV（Precipitable Water Vapor）标准单位为 <strong>mm</strong>（垂直气柱内水汽全部凝结的液态水厚度，数值上 1 mm = 1 kg/m²）。默认系数 a=0.585、b=0.569 取自 940nm 标准滤光片光度计文献参数化（Bruegge/Halthore 等），<strong>与仪器带宽/光谱响应相关</strong>，可在界面 "PWV Coefficients" 手动调整；建议用同期探空或 GNSS 水汽数据对本仪器拟合标定。</p>
+</div>
+
+<div class="card">
+    <h2>8. Ångström 参数</h2>
+    <p>气溶胶光学厚度的波长依赖用 Ångström 公式描述：</p>
+    <div class="formula">τ<sub>aero</sub>(λ) = β · λ<sup>−α</sup></div>
+    <p>对 440–870nm 的 AOD 做 lnτ–lnλ 最小二乘拟合，斜率即 α（波长指数，反映粒子尺度：α 大→细粒子为主），截距给出 β（浑浊度系数）。</p>
+</div>
+
+<div class="card">
+    <h2>9. 界面算法选项一览</h2>
+    <table>
+        <tr><th>选项</th><th>取值</th><th>说明</th></tr>
+        <tr><td>Langley Calibration</td><td>On (默认) / Off</td><td>开启则用当日数据回归 E₀；失败自动回退 Wehrli 标准值</td></tr>
+        <tr><td>Airmass Method</td><td>kasten (默认, QX/T 公式4) / kasten_young / young_irvine / simple</td><td>大气质量数公式</td></tr>
+        <tr><td>Rayleigh Method</td><td>standard (默认, QX/T 公式7) / hansen</td><td>瑞利光学厚度公式</td></tr>
+        <tr><td>Gas Correction</td><td>false (默认) / true</td><td>是否扣除 O₃/NO₂/CO₂/CH₄ 吸收</td></tr>
+        <tr><td>WV Baseline Method</td><td>standard (默认) / aod_only</td><td>936nm 水汽基线方法（见第 6 节）</td></tr>
+        <tr><td>Calculation Mode</td><td>Fast (默认) / Slow / Both</td><td>向量化快速 / 逐分钟慢速 / 两者对比（虚线为快速版）</td></tr>
+        <tr><td>PWV Coefficients</td><td>a=0.585, b=0.569 (默认)</td><td>PWV 换算系数，可手动修改</td></tr>
+    </table>
+</div>
+
+<div class="card">
+    <h2>10. 参考依据</h2>
+    <ul>
+        <li>QX/T 69-2024《气溶胶光学厚度 太阳光度计法》（公式 1–14）</li>
+        <li>《气溶胶光学厚度和 Ångström 参数反演理论基础》（Langley 定标、Heuklon 臭氧气候模式、云剔除方法）</li>
+        <li>Kasten F., 1965: 大气质量数公式</li>
+        <li>Spencer J.W., 1971: 太阳赤纬傅里叶级数</li>
+        <li>Wehrli C., 1985: 大气顶层太阳光谱（E₀ 回退值）</li>
+        <li>Bruegge et al., 1992; Halthore et al., 1997: 940nm 水汽-PWV 经验参数化</li>
+    </ul>
+</div>
+
+</div>
+</body>
+</html>
