@@ -2,6 +2,7 @@
 /*
 !.gitignore
 !README.md
+!CHANGELOG.md
 
 # 核心代码
 !aod_inversion.py

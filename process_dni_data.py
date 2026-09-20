@@ -5,25 +5,39 @@ import aod_inversion
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+# AOD时间序列反演的特征波长（含550/780等常用波长；936/1020处于水汽吸收带，表观AOD偏高）
+AOD_KEY_WAVELENGTHS = [340, 380, 400, 440, 500, 550, 675, 780, 870, 936, 1020]
+
 # 读取Excel文件
-def read_dni_data(file_path, original_filename=None):
+def read_dni_data(file_path, original_filename=None, data_start=None, data_end=None,
+                  wl_start=None, wl_end=None):
     """
     读取DNI光谱数据
-    
+
     Parameters
     ----------
     file_path : str
         Excel文件路径
     original_filename : str, optional
         原始文件名（如果提供，将从这里提取日期）
+    data_start, data_end : str, optional
+        数据起始/结束时刻 'HH:MM'，默认 04:00 起、1 分钟间隔
+    wl_start, wl_end : float, optional
+        数据波长范围 (nm)，默认 300-1100
         
     Returns
     -------
     dict
         包含时间、波长和辐照度数据的字典
     """
-    # 读取Excel文件
-    df = pd.read_excel(file_path, sheet_name=0)
+    # 读取Excel文件（calamine引擎：比openpyxl快10倍以上，低配机器上读全光谱文件从十几秒降到约1秒）
+    # header=None：数据规范为无表头纯数值矩阵（首行=起始时刻数据）；若首行是文字表头则丢弃
+    df = pd.read_excel(file_path, sheet_name=0, engine='calamine', header=None)
+    try:
+        df.iloc[0].values.astype(float)
+    except (ValueError, TypeError):
+        df = df.iloc[1:].reset_index(drop=True)
+        print("检测到文字表头行，已丢弃")
     
     # 提取辐照度数据
     irradiance_data = df.values
@@ -56,17 +70,234 @@ def read_dni_data(file_path, original_filename=None):
         start_time = datetime(2021, 10, 31, 4, 0, 0)
         print(f"无法从文件名提取日期，使用默认日期: 2021-10-31, 错误: {str(e)}")
     
-    # 生成时间序列（4:00至19:59，每分钟一个点）
-    time_series = [start_time + timedelta(minutes=i) for i in range(num_rows)]
-    
-    # 生成波长序列（300nm到1100nm，共801个波长）
-    wavelengths = np.linspace(300, 1100, num_cols)
+    # 生成时间序列：默认 4:00 起、1 分钟间隔；
+    # 提供 data_start（HH:MM）覆盖起始时刻，提供 data_end 时按 (起~止)/(行数-1) 均分间隔
+    if data_start:
+        try:
+            hh, mm = map(int, str(data_start).strip().split(':'))
+            start_time = start_time.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        except (ValueError, AttributeError):
+            print(f"data_start 格式无效({data_start})，仍用 04:00")
+    if data_end and num_rows > 1:
+        try:
+            eh, em = map(int, str(data_end).strip().split(':'))
+            end_time = start_time.replace(hour=eh, minute=em)
+            step = (end_time - start_time) / (num_rows - 1)
+        except (ValueError, AttributeError):
+            print(f"data_end 格式无效({data_end})，按1分钟间隔")
+            step = timedelta(minutes=1)
+    else:
+        step = timedelta(minutes=1)
+    time_series = [start_time + i * step for i in range(num_rows)]
+
+    # 生成波长序列：默认 300-1100nm；提供 wl_start/wl_end 时按范围均分
+    try:
+        lo = float(wl_start) if str(wl_start or '').strip() else 300.0
+        hi = float(wl_end) if str(wl_end or '').strip() else 1100.0
+    except (ValueError, TypeError):
+        print(f"波长范围无效({wl_start}~{wl_end})，回退 300-1100nm")
+        lo, hi = 300.0, 1100.0
+    wavelengths = np.linspace(lo, hi, num_cols)
     
     return {
         'time_series': time_series,
         'wavelengths': wavelengths,
         'irradiance': irradiance_data
     }
+
+# ============ svg 水平总辐射光谱（只绘图与积分，不做反演） ============
+# 按列数识别谱段（1nm 采样）：801列=300-1100nm，121列=280-400nm，751列=950-1700nm
+_SVG_RANGE_BY_COLS = {801: (300.0, 1100.0), 121: (280.0, 400.0), 751: (950.0, 1700.0)}
+
+def read_svg_data(file_path, original_filename=None, data_start=None, data_end=None,
+                  wl_start=None, wl_end=None):
+    """
+    读取svg水平总辐射光谱数据（格式与svd一致：无表头纯数值，每行一个分钟时刻）。
+
+    谱段：提供 wl_start/wl_end 时按该范围均分；否则按列数自动识别
+    （801列→300-1100nm，121列→280-400nm，751列→950-1700nm），其余回退 300-1100nm。
+    时段：默认 04:00 起 1 分钟间隔；data_start/data_end 可覆盖。
+    日期从文件名前8位(YYYYMMDD)提取。
+
+    Returns
+    -------
+    dict
+        {'time_series', 'wavelengths', 'irradiance'}
+    """
+    df = pd.read_excel(file_path, sheet_name=0, engine='calamine', header=None)
+    # 首行若为文字表头则丢弃（数据规范为无表头纯数值矩阵，首行=起始时刻数据）
+    try:
+        df.iloc[0].values.astype(float)
+    except (ValueError, TypeError):
+        df = df.iloc[1:].reset_index(drop=True)
+        print("检测到文字表头行，已丢弃")
+    irradiance_data = df.values.astype(float)
+    num_rows, num_cols = irradiance_data.shape
+    print(f"svg 数据形状: {num_rows}行 × {num_cols}列")
+
+    import os
+    filename = original_filename if original_filename else os.path.basename(file_path)
+    try:
+        date_str = filename[:8]
+        start_time = datetime(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]), 4, 0, 0)
+        print(f"从文件名提取日期: {start_time.strftime('%Y-%m-%d')}")
+    except Exception as e:
+        start_time = datetime(2021, 10, 31, 4, 0, 0)
+        print(f"无法从文件名提取日期，使用默认日期: 2021-10-31, 错误: {str(e)}")
+
+    # 时间轴：默认 04:00 起 1 分钟间隔；data_start/data_end 可覆盖（与 read_dni_data 同规则）
+    if data_start:
+        try:
+            hh, mm = map(int, str(data_start).strip().split(':'))
+            start_time = start_time.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        except (ValueError, AttributeError):
+            print(f"data_start 格式无效({data_start})，仍用 04:00")
+    if data_end and num_rows > 1:
+        try:
+            eh, em = map(int, str(data_end).strip().split(':'))
+            end_time = start_time.replace(hour=eh, minute=em)
+            step = (end_time - start_time) / (num_rows - 1)
+        except (ValueError, AttributeError):
+            step = timedelta(minutes=1)
+    else:
+        step = timedelta(minutes=1)
+    time_series = [start_time + i * step for i in range(num_rows)]
+    # 波长：用户指定范围优先；否则按列数自动识别
+    try:
+        user_range = str(wl_start or '').strip() and str(wl_end or '').strip()
+        if user_range:
+            wl_lo, wl_hi = float(wl_start), float(wl_end)
+        else:
+            wl_lo, wl_hi = _SVG_RANGE_BY_COLS.get(num_cols, (300.0, 1100.0))
+    except (ValueError, TypeError):
+        print(f"波长范围无效({wl_start}~{wl_end})，回退按列数识别")
+        wl_lo, wl_hi = _SVG_RANGE_BY_COLS.get(num_cols, (300.0, 1100.0))
+    else:
+        if user_range:
+            print(f"svg 谱段使用用户指定: {wl_lo:.0f}-{wl_hi:.0f}nm")
+    wavelengths = np.linspace(wl_lo, wl_hi, num_cols)
+    print(f"svg 谱段识别: {wl_lo:.0f}-{wl_hi:.0f}nm ({num_cols}列)")
+
+    return {'time_series': time_series, 'wavelengths': wavelengths, 'irradiance': irradiance_data}
+
+def apply_exclude_periods(data, periods):
+    """
+    按时段剔除数据：将处于任一剔除时段内的整行辐照度置为 NaN
+    （NaN 被后续 E>0 过滤、积分与绘图自然视为无效/断点，不参与任何计算）。
+
+    Parameters
+    ----------
+    data : dict
+        read_dni_data / read_svg_data 的返回（原地修改其 irradiance）
+    periods : list[list[str]]
+        剔除时段 [["HH:MM","HH:MM"], ...]；自动裁剪到数据实际时间范围，
+        起始>=结束或完全落在数据范围外的时段忽略
+
+    Returns
+    -------
+    list[list[str]]
+        实际生效的时段（裁剪后），用于结果区展示
+    """
+    if not periods:
+        return []
+    times = data['time_series']
+    if not times:
+        return []
+    irr = np.asarray(data['irradiance'], dtype=float)
+    day = times[0].date()
+    t_start, t_end = times[0], times[-1]
+    t_min = np.array([t.hour * 60 + t.minute for t in times])
+    mask = np.zeros(len(times), dtype=bool)
+    applied = []
+    for p in periods:
+        try:
+            s = datetime.strptime(f'{day} {p[0]}', '%Y-%m-%d %H:%M')
+            e = datetime.strptime(f'{day} {p[1]}', '%Y-%m-%d %H:%M')
+        except Exception:
+            continue
+        s = max(s, t_start)
+        e = min(e, t_end)
+        if s >= e:
+            continue
+        s_min = s.hour * 60 + s.minute
+        e_min = e.hour * 60 + e.minute
+        mask |= (t_min >= s_min) & (t_min <= e_min)
+        applied.append([s.strftime('%H:%M'), e.strftime('%H:%M')])
+    if mask.any():
+        irr[mask] = np.nan
+        data['irradiance'] = irr
+        print(f"剔除时段生效 {applied}，共剔除 {int(mask.sum())} 行")
+    return applied
+
+# CIE 1931 明视觉光谱光视效率 V(λ)，380-780nm，5nm 间隔
+_CIE_V_WL = np.arange(380.0, 781.0, 5.0)
+_CIE_V = np.array([
+    0.000039, 0.000064, 0.000120, 0.000217, 0.000396, 0.000640, 0.001210, 0.002180,
+    0.004000, 0.007300, 0.011600, 0.016840, 0.023000, 0.029800, 0.038000, 0.048000,
+    0.060000, 0.073900, 0.090980, 0.112600, 0.139020, 0.169300, 0.208020, 0.258600,
+    0.323000, 0.407300, 0.503000, 0.608200, 0.710000, 0.793200, 0.862000, 0.914850,
+    0.954000, 0.980300, 0.994950, 1.000000, 0.995000, 0.978600, 0.952000, 0.915400,
+    0.870000, 0.816300, 0.757000, 0.694900, 0.631000, 0.566800, 0.503000, 0.441200,
+    0.381000, 0.321000, 0.265000, 0.217000, 0.175000, 0.138200, 0.107000, 0.081600,
+    0.061000, 0.044580, 0.032000, 0.023200, 0.017000, 0.011920, 0.008210, 0.005723,
+    0.004102, 0.002929, 0.002091, 0.001484, 0.001047, 0.000740, 0.000520, 0.000361,
+    0.000249, 0.000172, 0.000120, 0.000085, 0.000060, 0.000042, 0.000030, 0.000021,
+    0.000015])
+
+def compute_svg_integrals(wavelengths, irradiance):
+    """
+    对 svg 光谱按时刻做波长积分（辐照度单位 W/(m²·nm)，向量化实现）。
+
+    积分项（数据谱段未完整覆盖的波段结果为 NaN）：
+      total    — 全谱段积分辐照度 (W/m²)
+      uv       — 300-400nm 紫外积分 (W/m²)
+      vis      — 400-700nm 可见积分 (W/m²)
+      nir      — 700-1100nm 近红外积分 (W/m²)
+      par_w    — PAR 光合有效辐射 400-700nm 能量积分 (W/m²)
+      par_ppfd — PAR 光子通量密度 (μmol/(m²·s))，PPFD = ∫E(λ)·λ·1e-9/(h·c·N_A)dλ ×1e6
+      lux      — 照度 (lx)，L = 683·∫E(λ)·V(λ)dλ，V(λ) 为 CIE 1931 明视觉曲线
+
+    Returns
+    -------
+    dict[str, np.ndarray]  每个键对应与时刻数等长的 float 数组
+    """
+    wl = np.asarray(wavelengths, dtype=float)
+    irr = np.asarray(irradiance, dtype=float)
+    n = irr.shape[0]
+    out = {k: np.full(n, np.nan) for k in ('total', 'uv', 'vis', 'nir', 'par_w', 'par_ppfd', 'lux')}
+
+    # 孤立坏列（如328/349nm）沿波长方向线性插值填补，避免积分因单个NaN整行作废；
+    # 整行全NaN的时刻（夜间）插值后仍为NaN，结果自然保留NaN
+    irr = pd.DataFrame(irr).interpolate(axis=1, limit_direction='both').values
+
+    def _band(lo, hi):
+        """返回覆盖 [lo,hi] 的列切片；谱段未完整覆盖时返回 None"""
+        if wl[0] > lo + 1e-6 or wl[-1] < hi - 1e-6:
+            return None
+        i0 = int(np.searchsorted(wl, lo))
+        i1 = int(np.searchsorted(wl, hi, side='right'))
+        return slice(i0, max(i1, i0 + 2))
+
+    out['total'] = np.trapezoid(irr, wl, axis=1)
+    for key, lo, hi in (('uv', 300, 400), ('vis', 400, 700), ('nir', 700, 1100), ('par_w', 400, 700)):
+        s = _band(lo, hi)
+        if s is not None:
+            out[key] = np.trapezoid(irr[:, s], wl[s], axis=1)
+
+    # PPFD：h·c·N_A ≈ 0.119626 J·m/mol
+    s = _band(400, 700)
+    if s is not None:
+        photon_flux = np.trapezoid(irr[:, s] * wl[s] * 1e-9, wl[s], axis=1)  # 光子/(s·m²)
+        out['par_ppfd'] = photon_flux / 0.119626 * 1e6
+
+    # 照度：V(λ) 插值到数据波长，380-780nm 之外按 0 计
+    s = _band(380, 780)
+    if s is not None:
+        v = np.interp(wl[s], _CIE_V_WL, _CIE_V)
+        out['lux'] = 683.0 * np.trapezoid(irr[:, s] * v, wl[s], axis=1)
+
+    return out
+
 
 # 处理DNI数据，反演AOD
 def process_dni_data(dni_data, latitude=49.0, longitude=119.4, pressure=840.0,
@@ -125,24 +356,17 @@ def process_dni_data(dni_data, latitude=49.0, longitude=119.4, pressure=840.0,
         # 检查太阳天顶角是否有效（太阳天顶角必须小于85度才能进行AOD反演）
         if solar_zenith >= 85:
             # 太阳天顶角无效，跳过该时间点
-            results.append({
-                'datetime': timestamp,
-                'solar_zenith': solar_zenith,
-                'aod_340': np.nan,
-                'aod_380': np.nan,
-                'aod_400': np.nan,
-                'aod_440': np.nan,
-                'aod_500': np.nan,
-                'aod_675': np.nan,
-                'aod_870': np.nan,
-                'angstrom_alpha': np.nan
-            })
+            row = {'datetime': timestamp, 'solar_zenith': solar_zenith}
+            for wl in AOD_KEY_WAVELENGTHS:
+                row[f'aod_{wl}'] = np.nan
+            row['angstrom_alpha'] = np.nan
+            results.append(row)
             continue
-        
+
         # 对每个波长进行AOD反演
         aod_results = {}
         # 处理更多关键波长
-        key_wavelengths = [340, 380, 400, 440, 500, 675, 870]
+        key_wavelengths = AOD_KEY_WAVELENGTHS
         for wavelength in key_wavelengths:
             # 找到最接近的波长索引
             idx = np.argmin(np.abs(wavelengths - wavelength))
@@ -180,20 +404,13 @@ def process_dni_data(dni_data, latitude=49.0, longitude=119.4, pressure=840.0,
         else:
             alpha = np.nan
         
-        # 保存结果
-        results.append({
-            'datetime': timestamp,
-            'solar_zenith': solar_zenith,
-            'aod_340': aod_results.get(340, np.nan),
-            'aod_380': aod_results.get(380, np.nan),
-            'aod_400': aod_results.get(400, np.nan),
-            'aod_440': aod_results.get(440, np.nan),
-            'aod_500': aod_results.get(500, np.nan),
-            'aod_675': aod_results.get(675, np.nan),
-            'aod_870': aod_results.get(870, np.nan),
-            'angstrom_alpha': alpha
-        })
-    
+        # 保存结果（按 AOD_KEY_WAVELENGTHS 动态生成列）
+        row = {'datetime': timestamp, 'solar_zenith': solar_zenith}
+        for wl in key_wavelengths:
+            row[f'aod_{wl}'] = aod_results.get(wl, np.nan)
+        row['angstrom_alpha'] = alpha
+        results.append(row)
+
     return pd.DataFrame(results)
 
 # 处理高光谱数据，计算每个波长的光学厚度（向量化版本）
@@ -466,8 +683,8 @@ def invert_ozone(dni_data, latitude=49.0, longitude=119.4, pressure=840.0):
 def langley_calibrate_day(dni_data, latitude=49.0, longitude=119.4,
                           wavelengths_cal=None, segment='auto',
                           m_min=2.0, m_max=6.0, min_r2=0.9,
-                          cloud_screen=True, shrink=True, max_depth=2, progress_cb=None,
-                          return_plot=False):
+                          cloud_screen=True, shrink=True, max_depth=2, time_range=None,
+                          sigma_e0_max=0.01, progress_cb=None, return_plot=False):
     """
     对一天的数据做Langley定标，回归各波长的大气顶层信号 E0。
 
@@ -489,7 +706,13 @@ def langley_calibrate_day(dni_data, latitude=49.0, longitude=119.4,
     wavelengths_cal : list, optional
         需要定标的波长（nm），默认 [340,380,400,440,500,675,870,936,1020]
     segment : str
-        拟合时段: 'auto'(选R²较高的半日), 'morning', 'afternoon', 'all'(全天)
+        拟合时段: 'auto'(日级统一时段：上午优先，上午整体不达标才统一用下午，
+        全部波长使用同一时段), 'morning', 'afternoon', 'all'(全天)。
+        除人工 time_range 外，全部波长在统一时段内还使用统一的拟合时间窗
+        （从各波长收缩窗口中日级评选公共窗口，保证 E0 光谱的时间一致性，
+        统一性优先于单波长最高R²）
+    time_range : tuple/list[str], optional
+        人工定标时段 ('HH:MM','HH:MM')，给定后覆盖 segment 分段，仅在该时段内拟合
     m_min, m_max : float
         参与拟合的大气质量数范围
     min_r2 : float
@@ -506,7 +729,8 @@ def langley_calibrate_day(dni_data, latitude=49.0, longitude=119.4,
     tuple (e0_dict, report_df)
         e0_dict : {波长: E0} 仅含定标成功的波长
         report_df : 各波长各半日段的定标详情（e0, tau_mean, r2, n_points,
-                    segment, success, depth, t_start, t_end, n_clear）
+                    segment, success, depth, t_start, t_end, n_clear,
+                    day_segment=日级统一时段, selected=该行是否提供了E0）
     """
     if wavelengths_cal is None:
         wavelengths_cal = [340, 380, 400, 440, 500, 675, 870, 936, 1020]
@@ -537,9 +761,21 @@ def langley_calibrate_day(dni_data, latitude=49.0, longitude=119.4,
         'afternoon': np.arange(idx_noon, n)
     }
 
-    e0_dict = {}
-    report_rows = []
-    plot_details = {}
+    # 人工指定定标时段（HH:MM~HH:MM）覆盖上/下午分段
+    if time_range:
+        try:
+            t_min_arr = np.array([t.hour * 60 + t.minute for t in time_series])
+            sh, sm = map(int, str(time_range[0]).split(':'))
+            eh, em = map(int, str(time_range[1]).split(':'))
+            if sh * 60 + sm < eh * 60 + em:
+                manual = np.where((t_min_arr >= sh * 60 + sm) & (t_min_arr <= eh * 60 + em))[0]
+                if len(manual) >= 10:
+                    segments = {'manual': manual}
+        except Exception:
+            pass
+
+    # ---- 第一遍：各波长分别拟合全部候选时段 ----
+    per_wl = []
     for wi, wl in enumerate(wavelengths_cal):
         if progress_cb:
             progress_cb(wi / len(wavelengths_cal))
@@ -560,11 +796,13 @@ def langley_calibrate_day(dni_data, latitude=49.0, longitude=119.4,
                     timestamps=[time_series[i] for i in seg_idx],
                     clear_mask=clear[seg_idx],
                     m_min=m_min, m_max=m_max, min_r2=min_r2,
+                    sigma_e0_max=sigma_e0_max,
                     max_depth=max_depth, return_plot=return_plot)
             else:
                 res = aod_inversion.langley_calibration(
                     airmasses[seg_idx][clear[seg_idx]], signals[seg_idx][clear[seg_idx]],
-                    esd, m_min=m_min, m_max=m_max, min_r2=min_r2)
+                    esd, m_min=m_min, m_max=m_max, min_r2=min_r2,
+                    sigma_e0_max=sigma_e0_max)
                 res['depth'] = 0
                 return res
 
@@ -573,30 +811,118 @@ def langley_calibrate_day(dni_data, latitude=49.0, longitude=119.4,
             res = fit_seg(seg_idx)
             res['segment'] = seg_name
             seg_results[seg_name] = res
-
         if segment == 'all':
             res_all = fit_seg(np.arange(n))
             res_all['segment'] = 'all'
-            candidates = [(res_all, np.arange(n))]
-        elif segment in ('morning', 'afternoon'):
-            candidates = [(seg_results[segment], segments[segment])]
-        else:  # auto
-            candidates = [(seg_results['morning'], segments['morning']),
-                          (seg_results['afternoon'], segments['afternoon'])]
+            seg_results['all'] = res_all
+        per_wl.append({'wl': wl, 'signals': signals, 'clear': clear, 'n_clear': n_clear,
+                       'seg_results': seg_results})
+
+    # ---- 日级统一选段：同一时段应用于全部波长，保持 E0 光谱一致 ----
+    # auto 模式上午优先：上午达标波长数不少于下午则统一用上午；
+    # 上午整体不达标（如上午阴雨、下午放晴）才统一用下午
+    if 'manual' in segments:
+        day_segment = 'manual'
+    elif segment in ('morning', 'afternoon', 'all'):
+        day_segment = segment
+    else:  # auto
+        n_am = sum(1 for it in per_wl if it['seg_results'].get('morning', {}).get('success'))
+        n_pm = sum(1 for it in per_wl if it['seg_results'].get('afternoon', {}).get('success'))
+        day_segment = 'morning' if n_am >= n_pm else 'afternoon'
+
+    # ---- 日级统一拟合窗口：各波长收缩出的子窗口往往不同，
+    # 在统一半日分支内评选对全部波长综合最优的公共窗口（达标波长数优先、
+    # 中位 R² 次之），所有波长在同一窗口重拟合，保证 E0(λ) 的时间一致性。
+    # 统一性优先于单波长最高 R² ----
+    day_window = None
+    if 'manual' not in segments:
+        cand = {}
+        for it in per_wl:
+            r = it['seg_results'].get(day_segment)
+            if r is not None and r.get('success') and r.get('t_start') is not None:
+                key = (r['t_start'], r['t_end'])
+                cand[key] = cand.get(key, 0) + 1
+        if len(cand) > 1:
+            seg_idx_all = segments[day_segment] if day_segment in segments else np.arange(n)
+            seg_times = [time_series[i] for i in seg_idx_all]
+            scored = []
+            for t1, t2 in cand:
+                win_idx = seg_idx_all[[t1 <= t <= t2 for t in seg_times]]
+                n_pass, r2s = 0, []
+                for it in per_wl:
+                    cw = it['clear'][win_idx]
+                    res_w = aod_inversion.langley_calibration(
+                        airmasses[win_idx][cw], it['signals'][win_idx][cw], esd,
+                        m_min=m_min, m_max=m_max, min_r2=min_r2,
+                        sigma_e0_max=sigma_e0_max)
+                    if res_w['success']:
+                        n_pass += 1
+                        r2s.append(res_w['r2'])
+                scored.append((n_pass, float(np.median(r2s)) if r2s else -1.0, (t1, t2)))
+            scored.sort(key=lambda x: (-x[0], -x[1]))
+            day_window = scored[0][2]
+
+    # ---- 第二遍：按统一时段生成 E0、报告与绘图数据 ----
+    e0_dict = {}
+    report_rows = []
+    plot_details = {}
+    explicit = ('manual' in segments) or segment in ('morning', 'afternoon', 'all')
+    for it in per_wl:
+        wl = it['wl']
+        signals = it['signals']
+        n_clear = it['n_clear']
+        seg_results = it['seg_results']
+        clear = it['clear']
+
+        # 统一窗口重拟合：替换统一时段的逐波长收缩结果，索引范围同步替换
+        it['win_idx'] = None
+        if day_window is not None and day_segment in seg_results:
+            t1, t2 = day_window
+            seg_idx_all = segments[day_segment] if day_segment in segments else np.arange(n)
+            seg_times = [time_series[i] for i in seg_idx_all]
+            win_idx = seg_idx_all[[t1 <= t <= t2 for t in seg_times]]
+            cw = clear[win_idx]
+            out = aod_inversion.langley_calibration(
+                airmasses[win_idx][cw], signals[win_idx][cw], esd,
+                m_min=m_min, m_max=m_max, min_r2=min_r2,
+                sigma_e0_max=sigma_e0_max, return_details=return_plot)
+            if return_plot:
+                res_w, det = out
+            else:
+                res_w, det = out, None
+            res_w['segment'] = day_segment
+            res_w['depth'] = 0
+            res_w['t_start'] = t1
+            res_w['t_end'] = t2
+            if det is not None:
+                used_on_win = np.zeros(len(win_idx), dtype=bool)
+                used_on_win[cw] = det['used_mask']
+                res_w['plot'] = {'used': used_on_win,
+                                 'slope': det['slope'], 'intercept': det['intercept']}
+            seg_results[day_segment] = res_w
+            it['win_idx'] = win_idx
 
         best = None
         best_seg_idx = None
-        for res, seg_idx in candidates:
+        for seg_name, res in seg_results.items():
+            if explicit and seg_name != day_segment:
+                continue  # 显式指定时段时报告只含该段
             report_rows.append({'wavelength': wl, 'segment': res['segment'],
                                 'e0': res['e0'], 'tau_mean': res['tau_mean'],
                                 'r2': res['r2'], 'rmse': res['rmse'],
+                                'sigma_e0': res.get('sigma_e0'),
+                                'estimated': bool(res.get('estimated', False)),
                                 'n_points': res['n_points'], 'n_clear': n_clear,
                                 'depth': res.get('depth', 0),
                                 't_start': res.get('t_start'), 't_end': res.get('t_end'),
+                                'day_segment': day_segment,
+                                'selected': bool(seg_name == day_segment and res['success']),
                                 'success': res['success']})
-            if res['success'] and (best is None or res['r2'] > best['r2']):
+            if seg_name == day_segment and res['success']:
                 best = res
-                best_seg_idx = seg_idx
+                best_seg_idx = (it['win_idx'] if it['win_idx'] is not None
+                                else (segments[seg_name] if seg_name in segments
+                                      else np.arange(n)))
 
         if best is not None:
             e0_dict[wl] = best['e0']
@@ -606,11 +932,19 @@ def langley_calibrate_day(dni_data, latitude=49.0, longitude=119.4,
             disp = best
             disp_seg_idx = best_seg_idx
             if disp is None:
-                # 定标失败时仍展示 R² 较高的候选段用于诊断
-                r2_list = [(r['r2'] if np.isfinite(r['r2']) else -9, i)
-                           for i, (r, _) in enumerate(candidates)]
-                j = int(np.argmax([x[0] for x in r2_list]))
-                disp, disp_seg_idx = candidates[j]
+                # 定标失败时优先展示统一时段的拟合用于诊断；
+                # 该段无绘图数据时退而展示 R² 较高的候选段
+                disp = seg_results.get(day_segment)
+                disp_seg_idx = (it['win_idx'] if it['win_idx'] is not None
+                                else (segments[day_segment] if day_segment in segments
+                                      else np.arange(n)))
+                if disp is None or disp.get('plot') is None:
+                    r2_list = [(r['r2'] if np.isfinite(r['r2']) else -9, sn)
+                               for sn, r in seg_results.items()]
+                    j = int(np.argmax([x[0] for x in r2_list]))
+                    sn = r2_list[j][1]
+                    disp = seg_results[sn]
+                    disp_seg_idx = segments[sn] if sn in segments else np.arange(n)
             p = disp.get('plot')
             if p is not None and disp_seg_idx is not None:
                 y_full = np.full(n, np.nan)
@@ -619,13 +953,23 @@ def langley_calibrate_day(dni_data, latitude=49.0, longitude=119.4,
                 used_full = np.zeros(n, dtype=bool)
                 used_local = np.asarray(p['used'], dtype=bool)
                 used_full[disp_seg_idx[used_local]] = True
+                def _fmt_hhmm(t):
+                    if t is None:
+                        return None
+                    if hasattr(t, 'strftime'):
+                        return t.strftime('%H:%M')
+                    s = str(t)
+                    return s.split('T')[1][:5] if 'T' in s else s[:5]
                 plot_details[str(wl)] = {
                     'm': [None if not np.isfinite(v) else float(v) for v in airmasses],
                     'y': [None if not np.isfinite(v) else float(v) for v in y_full],
                     'used': used_full.tolist(),
                     'slope': p['slope'], 'intercept': p['intercept'],
                     'r2': disp['r2'], 'segment': disp['segment'],
-                    'success': bool(disp['success'])
+                    't_start': _fmt_hhmm(disp.get('t_start')),
+                    't_end': _fmt_hhmm(disp.get('t_end')),
+                    'success': bool(disp['success']),
+                    'estimated': bool(disp.get('estimated', False))
                 }
 
     if return_plot:
@@ -637,7 +981,8 @@ def langley_calibrate_spectrum(dni_data, latitude=49.0, longitude=119.4,
                                airmass_method='kasten',
                                m_min=1.5, m_max=5.5, min_points=30,
                                sigma=2.0, max_iter=3, min_r2=0.85,
-                               cloud_screen=True, progress_cb=None):
+                               cloud_screen=True, segment='auto', tau_max=1.0,
+                               sigma_e0_max=0.01, time_range=None, progress_cb=None):
     """
     全波段 Langley 定标：对数据中全部波长（~800个）回归大气顶层信号 E0。
 
@@ -663,6 +1008,11 @@ def langley_calibrate_spectrum(dni_data, latitude=49.0, longitude=119.4,
         可接受的最低 R²
     cloud_screen : bool
         是否启用基于表观光学厚度稳定性的云/扰动清理（向量化）
+    segment : str
+        拟合时段: 'auto'(日级统一时段：上午优先，上午整体不达标才统一用下午，
+        全部波长使用同一时段), 'morning', 'afternoon', 'all'(全天)
+    tau_max : float
+        可接受的平均总光学厚度上限（默认1.0），排除云崩塌造成的高R²假拟合
 
     Returns
     -------
@@ -705,6 +1055,19 @@ def langley_calibrate_spectrum(dni_data, latitude=49.0, longitude=119.4,
                   'morning': slice(0, idx_noon + 1),
                   'afternoon': slice(idx_noon, n)}
 
+    # 人工指定定标时段（HH:MM~HH:MM）覆盖分段选择
+    if time_range:
+        try:
+            t_min_arr = np.array([t.hour * 60 + t.minute for t in time_series])
+            sh, sm = map(int, str(time_range[0]).split(':'))
+            eh, em = map(int, str(time_range[1]).split(':'))
+            if sh * 60 + sm < eh * 60 + em:
+                ids = np.where((t_min_arr >= sh * 60 + sm) & (t_min_arr <= eh * 60 + em))[0]
+                if len(ids) >= min_points:
+                    seg_slices = {'manual': slice(int(ids[0]), int(ids[-1]) + 1)}
+        except Exception:
+            pass
+
     # 对数信号矩阵 y = ln(E/esd)
     with np.errstate(divide='ignore', invalid='ignore'):
         y_all = np.where(irr > 0, np.log(irr / esd), np.nan)
@@ -733,20 +1096,31 @@ def langley_calibrate_spectrum(dni_data, latitude=49.0, longitude=119.4,
         ss_res = float(np.sum(resid ** 2))
         ss_tot = float(np.sum((y[keep] - y[keep].mean()) ** 2))
         r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
-        return slope, intercept, r2, int(keep.sum())
+        # 截距标准误差 σ(lnE0)：低τ通道R²系统性偏低时的估计解判据
+        xk = x[keep]
+        n_k = int(keep.sum())
+        sxx = float(np.sum((xk - xk.mean()) ** 2))
+        sigma_e0 = (float(np.sqrt(ss_res / (n_k - 2)) * np.sqrt(1.0 / n_k + float(xk.mean()) ** 2 / sxx))
+                    if n_k > 2 and sxx > 0 else np.inf)
+        return slope, intercept, r2, n_k, sigma_e0
 
-    e0_dict = {}
-    report_rows = []
+    # ---- 时段候选：auto 模式为上/下午半日段，日级统一选段 ----
+    if 'manual' in seg_slices:
+        seg_names = ['manual']
+    elif segment in ('morning', 'afternoon', 'all'):
+        seg_names = [segment]
+    else:  # auto
+        seg_names = ['morning', 'afternoon']
+
+    # ---- 第一遍：各波长分别拟合候选时段 ----
+    per_wl = []
     for j in range(nwl):
         if progress_cb and j % 50 == 0:
             progress_cb(j / nwl)
         col_clear = clear[:, j]
         y = y_all[:, j]
-
-        best = None
-        # 先试全天，不达标再试上午/下午半日段
-        seg_order = ['all', 'morning', 'afternoon']
-        for seg_name in seg_order:
+        res_j = {}
+        for seg_name in seg_names:
             sl = seg_slices[seg_name]
             mask = col_clear[sl]
             if mask.sum() < min_points:
@@ -754,18 +1128,44 @@ def langley_calibrate_spectrum(dni_data, latitude=49.0, longitude=119.4,
             res = fit_one(am[sl][mask], y[sl][mask])
             if res is None:
                 continue
-            slope, intercept, r2, n_used = res
-            ok = (slope < 0) and (r2 >= min_r2)
-            report_rows.append({'wavelength': float(wavelengths[j]), 'segment': seg_name,
-                                'e0': float(np.exp(intercept)), 'tau_mean': float(-slope),
-                                'r2': float(r2), 'n_points': n_used, 'success': bool(ok)})
-            if ok and (best is None or r2 > best[2]):
-                best = (float(np.exp(intercept)), float(-slope), r2, n_used, seg_name)
-            if best is not None and seg_name == 'all':
-                break  # 全天已达标，无需再试半日段
+            slope, intercept, r2, n_used, sigma_e0 = res
+            # 物理约束优先：斜率负且 τ≤tau_max（排除云崩塌高R²假拟合）；
+            # 质量：R²≥min_r2 为正常解；σ(lnE0)≤sigma_e0_max 且 R²≥0.5 为估计解
+            phys_ok = (slope < 0) and (-slope <= tau_max)
+            ok = bool(phys_ok and (r2 >= min_r2 or (r2 >= 0.5 and sigma_e0 <= sigma_e0_max)))
+            res_j[seg_name] = {'e0': float(np.exp(intercept)), 'tau_mean': float(-slope),
+                               'r2': float(r2), 'sigma_e0': float(sigma_e0),
+                               'n_points': n_used,
+                               'estimated': bool(ok and r2 < min_r2), 'success': ok}
+        per_wl.append(res_j)
 
-        if best is not None:
-            e0_dict[float(wavelengths[j])] = best[0]
+    # ---- 日级统一选段：同一时段应用于全部波长，保持 E0 光谱一致 ----
+    # auto 模式上午优先：上午达标波长数不少于下午则统一用上午；
+    # 上午整体不达标（如上午阴雨、下午放晴）才统一用下午
+    if 'manual' in seg_slices:
+        day_segment = 'manual'
+    elif segment in ('morning', 'afternoon', 'all'):
+        day_segment = segment
+    else:  # auto
+        n_am = sum(1 for r in per_wl if r.get('morning', {}).get('success'))
+        n_pm = sum(1 for r in per_wl if r.get('afternoon', {}).get('success'))
+        day_segment = 'morning' if n_am >= n_pm else 'afternoon'
+
+    # ---- 第二遍：按统一时段生成 E0 与报告 ----
+    e0_dict = {}
+    report_rows = []
+    for j, res_j in enumerate(per_wl):
+        for seg_name, r in res_j.items():
+            report_rows.append({'wavelength': float(wavelengths[j]), 'segment': seg_name,
+                                'e0': r['e0'], 'tau_mean': r['tau_mean'],
+                                'r2': r['r2'], 'sigma_e0': r['sigma_e0'],
+                                'n_points': r['n_points'], 'estimated': r['estimated'],
+                                'day_segment': day_segment,
+                                'selected': bool(seg_name == day_segment and r['success']),
+                                'success': r['success']})
+        sel = res_j.get(day_segment)
+        if sel is not None and sel['success']:
+            e0_dict[float(wavelengths[j])] = sel['e0']
 
     return e0_dict, pd.DataFrame(report_rows)
 
@@ -908,8 +1308,13 @@ def process_water_vapor(dni_data, latitude=49.0, longitude=119.4, pressure=840.0
             })
 
     df = pd.DataFrame(results)
-    # WVOD 转换为可降水量 PWV (mm)，系数可调
-    df['pwv_mm'] = aod_inversion.wvod_to_pwv(df['wvod_936'].values, a=pwv_a, b=pwv_b)
+    # 大气质量数（水汽斜程换算与斜柱含量用）
+    df['airmass'] = [aod_inversion.calculate_airmass(z) if np.isfinite(z) and z < 90 else np.nan
+                     for z in df['solar_zenith'].values]
+    # WVOD → 垂直柱可降水量（QX/T 69-2024 式(7)，含 m^b 斜程因子）；斜柱 = m × 垂直柱
+    df['pwv_mm'] = aod_inversion.wvod_to_pwv(df['wvod_936'].values, df['airmass'].values,
+                                             a=pwv_a, b=pwv_b)
+    df['pwv_slant_mm'] = df['pwv_mm'] * df['airmass']
     return df
 
 # ======================= 向量化快速计算（与逐分钟版结果一致） =======================
@@ -977,7 +1382,7 @@ def process_dni_data_fast(dni_data, latitude=49.0, longitude=119.4, pressure=840
     e0_ref = _merge_e0(e0_langley)
     valid = (sza < 85) & np.isfinite(am)
 
-    key_wavelengths = [340, 380, 400, 440, 500, 675, 870]
+    key_wavelengths = AOD_KEY_WAVELENGTHS
     aod_cols = {}
     for wl in key_wavelengths:
         idx = int(np.argmin(np.abs(wavelengths - wl)))
@@ -997,18 +1402,11 @@ def process_dni_data_fast(dni_data, latitude=49.0, longitude=119.4, pressure=840
     ok = np.isfinite(a440) & np.isfinite(a870) & (a440 > 0) & (a870 > 0)
     alpha[ok] = -np.log(a440[ok] / a870[ok]) / np.log(440.0 / 870.0)
 
-    return pd.DataFrame({
-        'datetime': time_series,
-        'solar_zenith': sza,
-        'aod_340': aod_cols[340],
-        'aod_380': aod_cols[380],
-        'aod_400': aod_cols[400],
-        'aod_440': aod_cols[440],
-        'aod_500': aod_cols[500],
-        'aod_675': aod_cols[675],
-        'aod_870': aod_cols[870],
-        'angstrom_alpha': alpha
-    })
+    df_dict = {'datetime': time_series, 'solar_zenith': sza}
+    for wl in key_wavelengths:
+        df_dict[f'aod_{wl}'] = aod_cols[wl]
+    df_dict['angstrom_alpha'] = alpha
+    return pd.DataFrame(df_dict)
 
 
 def process_water_vapor_fast(dni_data, latitude=49.0, longitude=119.4, pressure=840.0,
@@ -1060,16 +1458,19 @@ def process_water_vapor_fast(dni_data, latitude=49.0, longitude=119.4, pressure=
         baseline936[ok] = base
         wvod[ok] = total936[ok] - base
 
+    # WVOD → 垂直柱可降水量（含 m^b 斜程因子）；斜柱 = m × 垂直柱
+    pwv = aod_inversion.wvod_to_pwv(wvod, am, a=pwv_a, b=pwv_b)
     return pd.DataFrame({
         'datetime': time_series,
         'solar_zenith': sza,
+        'airmass': am,
         'aod_870': aod870,
         'aod_1020': aod1020,
         'angstrom_alpha': alpha,
         'aod_baseline_936': baseline936,
         'wvod_936': wvod,
-        # WVOD 转换为可降水量 PWV (mm)，系数可调
-        'pwv_mm': aod_inversion.wvod_to_pwv(wvod, a=pwv_a, b=pwv_b)
+        'pwv_mm': pwv,
+        'pwv_slant_mm': pwv * am
     })
 
 

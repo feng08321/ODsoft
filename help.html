@@ -109,9 +109,16 @@
     <p>Langley 法依赖"太阳无遮挡、大气条件稳定"假设，软件实施了两层清理：</p>
     <ul>
         <li><strong>云/扰动剔除</strong>：以表观总光学厚度的时间稳定性为判据，剔除相邻点跳变（默认 &gt;0.05）及滑动窗口内标准差过大（默认 &gt;0.02）的点（云遮挡瞬变、沙尘、大雾等）；</li>
-        <li><strong>时段收缩</strong>：整段拟合 R² 不达标时，递归二分缩小时段（最多至 1/4），在最长的稳定子时段内拟合；并可分别尝试上午/下午半日段，取 R² 较高者。</li>
+        <li><strong>时段收缩</strong>：整段拟合不达标时，递归二分缩小时段（最多至 1/4），在最长的稳定子时段内拟合，得到各波长的候选窗口。</li>
     </ul>
-    <h3>5.2 定标范围与回退</h3>
+    <h3>5.2 日级两级统一与分级接收判据</h3>
+    <p>实测大气上午/下午通常不对称（Langley 图呈"人"字分叉）。为保证 E₀(λ) 光谱的时间一致性，软件实行两级日级统一：</p>
+    <ul>
+        <li><strong>统一半日分支</strong>：9 个特征波长分别试拟合上午/下午半日段，上午达标波长数 ≥ 下午则全天统一用上午，否则统一下午（上午优先）；</li>
+        <li><strong>统一拟合时间窗</strong>：在选定分支内，从各波长候选窗口中评选对全部波长综合最优的公共窗口（达标波长数优先、中位 R² 次之），所有波长在同一窗口内重拟合。统一性优先于单波长最高 R²。</li>
+    </ul>
+    <p>分级接收判据（按优先级）：物理约束 0&lt;τ≤1 第一否决 → R²≥0.9 正常解 → σ(lnE₀)≤0.01 且 R²≥0.5 <strong>估计解</strong>（图题/报告标注 [estimated]）→ 失败回退 Wehrli (1985)。</p>
+    <h3>5.3 定标范围与回退</h3>
     <ul>
         <li>特征波长（340/380/400/440/500/675/870/936/1020nm）：用于 AOD 时间序列与 WVOD；</li>
         <li>全波段（~800 个波长）：用于高光谱 AOD 谱；</li>
@@ -130,8 +137,14 @@
 </div>
 
 <div class="card">
-    <h2>7. 可降水量 PWV 的换算（非标准内容，文献经验公式）</h2>
-    <div class="formula">τ<sub>H2O</sub>(936) = a · (m · PWV)<sup>b</sup>&nbsp;&nbsp;⇒&nbsp;&nbsp;PWV[mm] = 10 × (WVOD/a)<sup>1/b</sup></div>
+    <h2>7. 可降水量 PWV 的换算（QX/T 公式 5–7）</h2>
+    <p>水汽透过率与仪器响应（ω = m·PWV 为斜程水汽量，m 为大气质量数，τ 为 936nm 总光学厚度）：</p>
+    <div class="formula">T<sub>w</sub> = exp(−a·ω<sup>b</sup>)，&nbsp;ω = m·PWV<span class="eq-no">(5)</span></div>
+    <div class="formula">V = V₀·R<sup>−2</sup>·exp(−mτ)·T<sub>w</sub><span class="eq-no">(6)</span></div>
+    <div class="formula">PWV[cm] = [ (ln(V·R²/V₀) + mτ) / (a·m<sup>b</sup>) ]<sup>1/b</sup><span class="eq-no">(7)</span></div>
+    <p>软件内按垂直水汽光学厚度 WVOD = τ<sub>H2O</sub>(936) = −ln(T<sub>w</sub>)/m = a·m<sup>b−1</sup>·PWV<sup>b</sup> 等价反解（注意含 m<sup>b−1</sup> 因子，不可省略）：</p>
+    <div class="formula">PWV[mm] = 10 × ( WVOD / (a·m<sup>b−1</sup>) )<sup>1/b</sup></div>
+    <p>结果同时输出两种表示：<strong>垂直柱</strong>（PWV vertical，标准物理量）与<strong>斜柱</strong>（PWV slant = m × 垂直柱，沿实际阳光斜程路径的水汽量），图表各自独立子页显示，Excel 同时存储两列。</p>
     <p>PWV（Precipitable Water Vapor）标准单位为 <strong>mm</strong>（垂直气柱内水汽全部凝结的液态水厚度，数值上 1 mm = 1 kg/m²）。默认系数 a=0.585、b=0.569 取自 940nm 标准滤光片光度计文献参数化（Bruegge/Halthore 等），<strong>与仪器带宽/光谱响应相关</strong>，可在界面 "PWV Coefficients" 手动调整；建议用同期探空或 GNSS 水汽数据对本仪器拟合标定。</p>
 </div>
 

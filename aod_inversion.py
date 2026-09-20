@@ -455,6 +455,25 @@ def solar_zenith_angle(latitude: float, longitude: float,
     return theta
 
 
+def pressure_from_altitude(altitude_m: float) -> float:
+    """
+    由海拔高度估算地面气压（标准大气压高公式）
+
+    P = 1013.25 × (1 − 2.25577×10⁻⁵ × h)^5.25588
+
+    Parameters
+    ----------
+    altitude_m : float
+        海拔高度 (m)
+
+    Returns
+    -------
+    float
+        气压 (hPa)。注意为标准大气近似，实际气压随天气有±10~20 hPa波动
+    """
+    return 1013.25 * (1 - 2.25577e-5 * altitude_m) ** 5.25588
+
+
 def airmass_simple(zenith_angle: float) -> float:
     """
     简化大气质量数计算 (适用于天顶角 < 60°)
@@ -1544,15 +1563,20 @@ def invert_aod(wavelength: float,
     }
 
 
-def wvod_to_pwv(wvod, a: float = 0.585, b: float = 0.569):
+def wvod_to_pwv(wvod, m, a: float = 0.585, b: float = 0.569):
     """
-    936nm 水汽光学厚度 (WVOD) 转换为可降水量 PWV (mm)
+    936nm 水汽光学厚度 (WVOD) 转换为可降水量 PWV (mm)——垂直柱含量
 
-    经验关系（Bruegge et al. 1992; Halthore et al. 1997 等，斜程形式）：
-        τ_H2O(936) = a · (m · PWV_cm)^b
-    本项目反演的 WVOD 已按大气质量数归一为垂直光学厚度，故用垂直形式：
-        PWV_cm = (WVOD / a)^(1/b)
+    经验关系（Bruegge et al. 1992; Halthore et al. 1997，斜程形式，
+    QX/T 69-2024 式(7)）：
+        Tw = exp(-a·ω^b)，其中斜程水汽量 ω = m·PWV_cm
+    本项目 WVOD = -ln(Tw)/m 为垂直光学厚度，即 WVOD = a·m^(b-1)·PWV_cm^b，
+    反解得垂直柱水汽：
+        PWV_cm = (m·WVOD / (a·m^b))^(1/b) = (WVOD / (a·m^(b-1)))^(1/b)
         PWV_mm = 10 × PWV_cm      (1 mm 可降水 = 1 kg/m²)
+    斜柱水汽量 = m × PWV_mm（结果另存于 pwv_slant_mm 列）。
+    注：m^(b-1) 因子不可省略——省略后仅 m≈1（正午附近）准确，
+    m=2/3/5 时分别低估约 41%/57%/70%。
 
     注意：默认系数 a=0.585, b=0.569 针对 940nm 附近标准滤光片
     （FWHM≈10nm）定标，高光谱仪器带宽不同，系数需用仪器光谱响应
@@ -1562,24 +1586,27 @@ def wvod_to_pwv(wvod, a: float = 0.585, b: float = 0.569):
     ----------
     wvod : float 或 array_like
         936nm 垂直水汽光学厚度
+    m : float 或 array_like
+        大气质量数（斜程换算必需）
     a, b : float
         经验系数（可在前端/接口手动调整）
 
     Returns
     -------
     float 或 np.ndarray
-        可降水量 PWV (mm)；WVOD<=0 或 NaN 时返回 NaN
+        垂直柱可降水量 PWV (mm)；WVOD<=0 或 m/输入非法时返回 NaN
     """
-    w = np.asarray(wvod, dtype=float)
+    w, mm = np.broadcast_arrays(np.asarray(wvod, dtype=float), np.asarray(m, dtype=float))
     pwv_cm = np.full_like(w, np.nan)
-    ok = np.isfinite(w) & (w > 0) & (a > 0) & (b != 0)
-    pwv_cm[ok] = (w[ok] / a) ** (1.0 / b)
+    ok = np.isfinite(w) & (w > 0) & np.isfinite(mm) & (mm > 0) & (a > 0) & (b != 0)
+    pwv_cm[ok] = (w[ok] / (a * mm[ok] ** (b - 1.0))) ** (1.0 / b)
     pwv_mm = 10.0 * pwv_cm
     return float(pwv_mm) if pwv_mm.ndim == 0 or pwv_mm.size == 1 else pwv_mm
 
 
 def langley_calibration(airmasses, signals, esd_factor, m_min=2.0, m_max=6.0,
                         min_points=10, sigma=2.0, max_iter=3, min_r2=0.9,
+                        tau_max=1.0, sigma_e0_max=0.01, min_r2_floor=0.5,
                         return_details=False):
     """
     Langley 定标：由实测信号回归大气顶层信号 E0（或 V0）
@@ -1612,7 +1639,15 @@ def langley_calibration(airmasses, signals, esd_factor, m_min=2.0, m_max=6.0,
     max_iter : int
         最大迭代次数
     min_r2 : float
-        可接受的最低判定系数 R²
+            可接受的最低判定系数 R²
+        tau_max : float
+            可接受的平均总光学厚度上限（默认1.0）。Langley定标要求晴稳天气，
+            τ>1 的"高R²"拟合多为云崩塌假象，判定为失败
+        sigma_e0_max : float
+            估计解的截距标准误差上限（对数域，默认0.01≈E0精度1%）。
+            低τ通道直线平缓、R²系统性偏低，但截距仍可能定得准
+        min_r2_floor : float
+            估计解的R²下限（默认0.5），防止接受纯噪声拟合
     return_details : bool
         若为 True，返回 (result, details)，details 含绘图细节：
         'used_mask'（输入数组上最终参与拟合的点）、'slope'、'intercept'、'r2'
@@ -1628,7 +1663,8 @@ def langley_calibration(airmasses, signals, esd_factor, m_min=2.0, m_max=6.0,
         - 'n_points': 最终用于拟合的点数
     """
     result = {'success': False, 'e0': np.nan, 'tau_mean': np.nan,
-              'r2': np.nan, 'rmse': np.nan, 'n_points': 0}
+              'r2': np.nan, 'rmse': np.nan, 'n_points': 0,
+              'sigma_e0': np.nan, 'estimated': False}
 
     m = np.asarray(airmasses, dtype=float)
     s = np.asarray(signals, dtype=float)
@@ -1656,23 +1692,45 @@ def langley_calibration(airmasses, signals, esd_factor, m_min=2.0, m_max=6.0,
         keep = new_keep
 
     # 最终拟合
-    if keep.sum() < min_points:
+    n_pts = int(keep.sum())
+    if n_pts < min_points:
         return (result, None) if return_details else result
-    slope, intercept = np.polyfit(x[keep], y[keep], 1)
-    resid = y[keep] - (slope * x[keep] + intercept)
+    xk = x[keep]
+    slope, intercept = np.polyfit(xk, y[keep], 1)
+    resid = y[keep] - (slope * xk + intercept)
     ss_res = np.sum(resid ** 2)
     ss_tot = np.sum((y[keep] - y[keep].mean()) ** 2)
     r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+
+    # 截距标准误差 σ(lnE0)：直接度量 E0 定标精度。
+    # 低τ通道直线平缓、R²系统性偏低，但 σ(lnE0) 仍可能达标；
+    # 回差双线同源（E0为仪器常数）时，合并拟合截距≈两支公共截距，可作估计解
+    sxx = float(np.sum((xk - xk.mean()) ** 2))
+    sigma_e0 = (float(np.sqrt(ss_res / (n_pts - 2)) * np.sqrt(1.0 / n_pts + float(xk.mean()) ** 2 / sxx))
+                if n_pts > 2 and sxx > 0 else np.inf)
 
     result.update({
         'e0': float(np.exp(intercept)),
         'tau_mean': float(-slope),
         'r2': float(r2),
-        'rmse': float(np.sqrt(ss_res / keep.sum())),
-        'n_points': int(keep.sum())
+        'rmse': float(np.sqrt(ss_res / n_pts)),
+        'n_points': n_pts,
+        'sigma_e0': round(float(sigma_e0), 5)
     })
-    # 斜率必须为负（光学厚度为正），拟合质量需达标
-    result['success'] = bool(slope < 0 and r2 >= min_r2)
+
+    # 成功判据（物理约束优先于拟合优度）：
+    # 1) 斜率必须为负且 τ≤tau_max——云崩塌段可拟合出 R² 很高的假直线（τ达2~8），一律拒绝；
+    # 2) 质量二选一：R²≥min_r2 为正常解；
+    #    或 σ(lnE0)≤sigma_e0_max 且 R²≥min_r2_floor 为估计解（estimated=True，
+    #    低τ/回差双线通道 R² 系统性偏低，但截距仍可能定得准）
+    phys_ok = bool(slope < 0 and -slope <= tau_max)
+    if phys_ok and r2 >= min_r2:
+        result['success'] = True
+    elif phys_ok and r2 >= min_r2_floor and sigma_e0 <= sigma_e0_max:
+        result['success'] = True
+        result['estimated'] = True
+    else:
+        result['success'] = False
     if return_details:
         used_mask = np.zeros(len(s), dtype=bool)
         used_mask[idx_full[keep]] = True
@@ -1746,10 +1804,16 @@ def cloud_screen_variability(airmasses, signals, esd_factor, window=5,
 def langley_calibration_shrinking(airmasses, signals, esd_factor, timestamps=None,
                                   clear_mask=None, m_min=2.0, m_max=6.0,
                                   min_points=10, sigma=2.0, max_iter=3,
-                                  min_r2=0.9, max_depth=2, return_plot=False):
+                                  min_r2=0.9, tau_max=1.0, sigma_e0_max=0.01,
+                                  min_r2_floor=0.5, max_depth=2, improve_ratio=0.8,
+                                  return_plot=False):
     """
     带时段收缩的 Langley 定标：当整段数据不符合 Langley 线性趋势时，
     递归二分缩小时段范围，在更短的稳定子时段内完成拟合。
+
+    整段拟合成功（R²达标）后仍继续二分比较：若子段也成功且 RMSE 明显更低，
+    说明父段混入了系统性弯曲的头/尾（平滑变化，云清理和sigma迭代都剔不掉，
+    只会压低R²但不一定低于阈值），此时采用更干净的子段。
 
     Parameters
     ----------
@@ -1763,6 +1827,10 @@ def langley_calibration_shrinking(airmasses, signals, esd_factor, timestamps=Non
         数据清理掩码（如 cloud_screen_variability 的输出），False 点不参与拟合
     max_depth : int
         时段二分收缩的最大层数（0=不收缩，1=允许减半，2=允许减到1/4）
+    improve_ratio : float
+        成功候选按 RMSE 判优（与段长无关，R² 对短段天然偏低不公平）：
+        子段 RMSE < 当前最优 × improve_ratio 时才替换，避免干净天气下
+        因噪声波动被无意义地越切越短
 
     Returns
     -------
@@ -1784,18 +1852,19 @@ def langley_calibration_shrinking(airmasses, signals, esd_factor, timestamps=Non
         res, det = langley_calibration(airmasses[idx], signals[idx], esd_factor,
                                        m_min=m_min, m_max=m_max, min_points=min_points,
                                        sigma=sigma, max_iter=max_iter, min_r2=min_r2,
+                                       tau_max=tau_max, sigma_e0_max=sigma_e0_max,
+                                       min_r2_floor=min_r2_floor,
                                        return_details=True)
         res['depth'] = depth
         if timestamps is not None and len(idx) > 0:
             res['t_start'] = timestamps[idx[0]]
             res['t_end'] = timestamps[idx[-1]]
-        if res['success']:
-            if best is None or res['r2'] > best['r2']:
-                best = res
-                best_idx = idx
-                best_det = det
-            return
-        # 未达到拟合质量，缩小时段重试
+        if res['success'] and (best is None or res['rmse'] < best['rmse'] * improve_ratio):
+            best = res
+            best_idx = idx
+            best_det = det
+        # 成功也继续二分：父段可能混入了系统性弯曲的头/尾，切开后子段
+        # 显著更低的 RMSE 才能把它暴露出来
         if depth < max_depth and len(idx) >= 2 * min_points:
             mid = len(idx) // 2
             _try(idx[:mid], depth + 1)
@@ -1808,6 +1877,8 @@ def langley_calibration_shrinking(airmasses, signals, esd_factor, timestamps=Non
         best, best_det = langley_calibration(airmasses[idx_all], signals[idx_all], esd_factor,
                                              m_min=m_min, m_max=m_max, min_points=min_points,
                                              sigma=sigma, max_iter=max_iter, min_r2=min_r2,
+                                             tau_max=tau_max, sigma_e0_max=sigma_e0_max,
+                                             min_r2_floor=min_r2_floor,
                                              return_details=True)
         best['depth'] = -1
         best_idx = idx_all

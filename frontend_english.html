@@ -328,8 +328,11 @@
     <div class="header">
         <div class="header-content">
             <h1>AOD Inversion System
+                <span id="appVersion" style="font-size:13px; font-weight:400; color:#fff; opacity:0.75; margin-left:10px;">v1.0.0</span>
                 <a href="/static/help.html" target="_blank"
                    style="font-size:14px; font-weight:400; color:#fff; opacity:0.9; margin-left:16px; text-decoration:underline;">帮助 / 反演原理说明</a>
+                <a href="javascript:void(0)" onclick="showAbout()"
+                   style="font-size:14px; font-weight:400; color:#fff; opacity:0.9; margin-left:16px; text-decoration:underline;">关于 / About</a>
             </h1>
         </div>
     </div>
@@ -353,6 +356,56 @@
                 </div>
                 
                 <div class="form-row">
+                    <label class="form-label">Data Type</label>
+                    <div class="radio-group">
+                        <div class="radio-item">
+                            <input type="radio" id="svdType" name="dataType" value="svd" checked onchange="updateDataType()">
+                            <label for="svdType">Direct (svd, 直接辐射)</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="svgType" name="dataType" value="svg" onchange="updateDataType()">
+                            <label for="svgType">Global (svg, 水平总辐射)</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 剔除时段：所有数据类型通用，可0个或多个 -->
+                <div class="form-row" style="align-items:flex-start;">
+                    <label class="form-label">Exclude Periods<br><span style="font-weight:normal;font-size:11px;color:#909399;">剔除时段 (HH:MM)</span></label>
+                    <div style="flex:1;">
+                        <div id="excludeList"></div>
+                        <button type="button" class="btn btn-default" style="padding:4px 12px; font-size:12px;" onclick="addExcludePeriod()">+ Add Period</button>
+                    </div>
+                </div>
+
+                <!-- 数据格式：数据矩阵的时段/波长覆盖范围与单位；时段按行数均分，波长留空自动识别 -->
+                <div class="form-row" id="dataFormatRow">
+                    <label class="form-label">Data Format<br><span style="font-weight:normal;font-size:11px;color:#909399;">数据时段/波长范围</span></label>
+                    <div style="flex:1; display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:12px; color:#606266;">
+                        <span>时间 Time</span>
+                        <input type="time" class="form-input" id="data_start_time" value="04:00" style="width:92px;">
+                        <span>~</span>
+                        <input type="time" class="form-input" id="data_end_time" value="19:59" style="width:92px;">
+                        <span style="margin-left:10px;">波长 Wavelength</span>
+                        <input type="number" class="form-input" id="data_wl_start" placeholder="300" step="1" style="width:75px;">
+                        <span>~</span>
+                        <input type="number" class="form-input" id="data_wl_end" placeholder="1100" step="1" style="width:75px;">
+                        <span>nm（留空自动识别）</span>
+                        <input type="text" class="form-input" id="data_unit" value="W/m²/nm" style="width:95px; margin-left:10px;" title="数据单位（元数据标注，随配置文件保存）">
+                    </div>
+                </div>
+
+                <!-- 参数配置文件：导入/导出（站点经纬度、气压、算法与PWV系数等） -->
+                <div class="form-row">
+                    <label class="form-label">Config File<br><span style="font-weight:normal;font-size:11px;color:#909399;">参数配置</span></label>
+                    <div style="display:flex; gap:8px;">
+                        <button type="button" class="btn btn-default" onclick="document.getElementById('configFileInput').click()">Load Config 导入</button>
+                        <button type="button" class="btn btn-default" onclick="saveConfig()">Save Config 保存</button>
+                        <input type="file" id="configFileInput" accept=".txt" style="display:none" onchange="loadConfig(this)">
+                    </div>
+                </div>
+
+                <div class="form-row" id="inversionTypeRow">
                     <label class="form-label">Inversion Type</label>
                     <div class="radio-group">
                         <div class="radio-item">
@@ -371,19 +424,33 @@
                     </div>
                 </div>
 
-                <div class="form-row">
+                <div class="form-row" id="latitudeRow">
                     <label class="form-label">Latitude</label>
                     <input type="number" class="form-input" id="latitude" value="49.0" step="0.1">
                 </div>
 
-                <div class="form-row">
+                <div class="form-row" id="longitudeRow">
                     <label class="form-label">Longitude</label>
                     <input type="number" class="form-input" id="longitude" value="119.4" step="0.1">
                 </div>
 
-                <div class="form-row">
-                    <label class="form-label">Pressure (hPa)</label>
-                    <input type="number" class="form-input" id="pressure" value="840.0" step="1">
+                <div class="form-row" id="altitudeRow">
+                    <label class="form-label">Altitude (m)<br><span style="font-weight:normal;font-size:11px;color:#909399;">海拔（必填）</span></label>
+                    <div style="flex:1; display:flex; gap:8px; align-items:center;">
+                        <input type="number" class="form-input" id="altitude" value="1500" step="10" style="width:120px;" oninput="updatePressureHint()">
+                        <span id="pressureHint" style="font-size:12px; color:#909399;"></span>
+                    </div>
+                </div>
+
+                <div class="form-row" id="pressureRow">
+                    <label class="form-label">Pressure Source<br><span style="font-weight:normal;font-size:11px;color:#909399;">气压来源</span></label>
+                    <div style="flex:1; display:flex; gap:8px; align-items:center;">
+                        <select class="form-input" id="pressure_mode" style="width:220px;" onchange="updatePressureMode()">
+                            <option value="altitude" selected>由海拔计算 (From altitude)</option>
+                            <option value="pressure">直接输入气压 (Manual)</option>
+                        </select>
+                        <input type="number" class="form-input" id="pressure" value="840.0" step="1" style="width:120px; display:none;" placeholder="气压 hPa">
+                    </div>
                 </div>
 
                 <div class="form-row" id="ozoneRow">
@@ -426,6 +493,27 @@
                     </select>
                 </div>
 
+                <div class="form-row algo-option" id="langleySegRow">
+                    <label class="form-label">Langley Fit Segment 拟合时段</label>
+                    <select class="form-input" id="langley_segment">
+                        <option value="auto" selected>Auto (日级统一时段+统一窗口, 上午优先)</option>
+                        <option value="morning">Morning only 仅上午</option>
+                        <option value="afternoon">Afternoon only 仅下午</option>
+                        <option value="all">Whole day 全天</option>
+                        <option value="manual">Manual 人工时段(下方输入)</option>
+                    </select>
+                </div>
+
+                <div class="form-row algo-option" id="langleyTimeRow" style="display:none;">
+                    <label class="form-label">Manual Fit Period 人工定标时段</label>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <input type="time" class="form-input" id="langley_start" style="width:110px;">
+                        <span>~</span>
+                        <input type="time" class="form-input" id="langley_end" style="width:110px;">
+                        <span style="font-size:12px; color:#888;">仅当上方选择"人工时段"时生效</span>
+                    </div>
+                </div>
+
                 <div class="form-row algo-option" id="calcModeRow">
                     <label class="form-label">Calculation Mode</label>
                     <select class="form-input" id="calc_mode">
@@ -446,8 +534,8 @@
                 <div class="form-row algo-option" id="pwvCoeffRow" style="display: none;">
                     <label class="form-label">PWV Coefficients (a / b)</label>
                     <div style="display:flex; gap:8px;">
-                        <input type="number" class="form-input" id="pwv_a" value="0.585" step="0.001" title="PWV = (WVOD/a)^(1/b)，系数a">
-                        <input type="number" class="form-input" id="pwv_b" value="0.569" step="0.001" title="PWV = (WVOD/a)^(1/b)，系数b">
+                        <input type="number" class="form-input" id="pwv_a" value="0.585" step="0.001" title="PWV = (WVOD/(a·m^(b-1)))^(1/b)，系数a">
+                        <input type="number" class="form-input" id="pwv_b" value="0.569" step="0.001" title="PWV = (WVOD/(a·m^(b-1)))^(1/b)，系数b">
                     </div>
                 </div>
                 
@@ -460,7 +548,7 @@
                 <div id="progressArea" style="display:none; margin-top:15px;">
                     <div style="display:flex; justify-content:space-between; font-size:13px; color:#606266; margin-bottom:5px;">
                         <span id="progressStage">Queued</span>
-                        <span id="progressPct">0%</span>
+                        <span><span id="progressTime">0.0 s</span> · <span id="progressPct">0%</span></span>
                     </div>
                     <div style="background:#e4e7ed; border-radius:4px; height:14px; overflow:hidden;">
                         <div id="progressBar" style="background:#409eff; height:100%; width:0%; transition:width 0.3s;"></div>
@@ -479,6 +567,8 @@
                     <p><strong>Result ID:</strong> <span id="resultId"></span></p>
                     <p><strong>Inversion Type:</strong> <span id="inversionType"></span></p>
                     <p><strong>Data Date:</strong> <span id="dataDate"></span></p>
+                    <p><strong>Processing Time:</strong> <span id="procTime">-</span></p>
+                    <p id="excludedLine" style="display:none;"><strong>Excluded Periods:</strong> <span id="excludedPeriods"></span></p>
                 </div>
                 
                 <div class="btn-group">
@@ -501,6 +591,8 @@
         let selectedFile = null;
         let currentResult = null;
         let currentType = 'aod';
+        let currentDataType = 'svd';
+        let submitStartTime = null;  // 提交时刻，用于进度条计时与总耗时统计
         
         function handleFileSelect(event) {
             const file = event.target.files[0];
@@ -509,6 +601,31 @@
                 document.getElementById('fileName').textContent = file.name;
             }
         }
+
+        // 数据类型切换：svg（水平总辐射）只做绘图与积分，隐藏全部反演参数
+        function updateDataType() {
+            currentDataType = document.querySelector('input[name="dataType"]:checked').value;
+            const isSvg = currentDataType === 'svg';
+            const paramRows = ['inversionTypeRow', 'latitudeRow', 'longitudeRow', 'altitudeRow', 'pressureRow',
+                'ozoneRow', 'airmassRow', 'rayleighRow', 'gasCorrRow', 'langleyRow', 'langleySegRow',
+                'calcModeRow', 'wvMethodRow', 'pwvCoeffRow'];
+            paramRows.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = isSvg ? 'none' : '';
+            });
+            if (!isSvg) updateForm();  // 恢复按反演类型的显示规则
+            updateLangleyTimeRow();    // 人工定标时段：仅svd且分段选manual时显示
+            document.getElementById('submitBtn').textContent = isSvg ? 'Load & View' : 'Start Inversion';
+        }
+
+        function updateLangleyTimeRow() {
+            const row = document.getElementById('langleyTimeRow');
+            if (!row) return;
+            const isSvg = currentDataType === 'svg';
+            const seg = document.getElementById('langley_segment').value;
+            row.style.display = (!isSvg && seg === 'manual') ? '' : 'none';
+        }
+        document.getElementById('langley_segment').addEventListener('change', updateLangleyTimeRow);
         
         function updateForm() {
             const type = document.querySelector('input[name="inversionType"]:checked').value;
@@ -522,41 +639,173 @@
             document.getElementById('pwvCoeffRow').style.display = type === 'wv' ? 'block' : 'none';
         }
         
+        // 气压/海拔输入模式切换：标准大气公式 P = 1013.25*(1-2.25577e-5*h)^5.25588
+        function pressureFromAltitude(h) { return 1013.25 * Math.pow(1 - 2.25577e-5 * h, 5.25588); }
+        function altitudeFromPressure(p) { return (1 - Math.pow(p / 1013.25, 1 / 5.25588)) / 2.25577e-5; }
+
+        function updatePressureMode() {
+            // 海拔始终显示且必填；仅"直接输入气压"模式下显示气压输入框
+            const mode = document.getElementById('pressure_mode').value;
+            document.getElementById('pressure').style.display = mode === 'pressure' ? '' : 'none';
+            updatePressureHint();
+        }
+
+        function updatePressureHint() {
+            // 海拔旁实时提示换算气压（两种模式下都显示，作为参考）
+            const h = parseFloat(document.getElementById('altitude').value);
+            document.getElementById('pressureHint').textContent =
+                isFinite(h) ? '≈ ' + pressureFromAltitude(h).toFixed(1) + ' hPa' : '';
+        }
+
+        // 参数配置文件：导出为带时间戳的 txt（key=value），导入时按键回填（未知键忽略，兼容旧版）
+        const CONFIG_KEYS = ['latitude', 'longitude', 'pressure_mode', 'pressure', 'altitude', 'ozone_du', 'airmass_method',
+            'rayleigh_method', 'gas_correction', 'langley_cal', 'langley_segment', 'langley_start', 'langley_end', 'calc_mode', 'wv_method', 'pwv_a', 'pwv_b',
+            'data_start_time', 'data_end_time', 'data_wl_start', 'data_wl_end', 'data_unit'];
+
+        function saveConfig() {
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+            let text = '# AOD Inversion System 参数配置\n# 保存时间: ' + now.toLocaleString() + '\n';
+            CONFIG_KEYS.forEach(k => {
+                const el = document.getElementById(k);
+                if (el) text += k + ' = ' + el.value + '\n';
+            });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([text], {type: 'text/plain;charset=utf-8'}));
+            a.download = 'station_config_' + stamp + '.txt';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+        function loadConfig(input) {
+            const file = input.files[0];
+            input.value = '';  // 允许重复导入同一文件
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                const applied = [];
+                String(reader.result).split(/\r?\n/).forEach(line => {
+                    line = line.trim();
+                    if (!line || line.startsWith('#')) return;
+                    const eq = line.indexOf('=');
+                    if (eq < 0) return;
+                    const key = line.slice(0, eq).trim();
+                    const val = line.slice(eq + 1).trim();
+                    const el = document.getElementById(key);
+                    if (el && CONFIG_KEYS.includes(key)) {
+                        el.value = val;
+                        applied.push(key + '=' + val);
+                    }
+                });
+                if (applied.length) alert('配置已导入 / Config loaded:\n' + applied.join(', '));
+                else alert('配置文件为空或格式无法识别');
+                updatePressureMode();  // 同步气压/海拔输入框显示
+                updateLangleyTimeRow();  // 同步人工定标时段行显示
+            };
+            reader.readAsText(file);
+        }
+
+        // 剔除时段：动态行，每行 起始~结束(HH:MM)，可增删，0个或多个
+        function addExcludePeriod(start, end) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex; gap:8px; margin-bottom:6px; align-items:center;';
+            row.innerHTML = '<input type="time" class="form-input ex-start" style="width:130px;" value="' + (start || '') + '">' +
+                '<span>~</span>' +
+                '<input type="time" class="form-input ex-end" style="width:130px;" value="' + (end || '') + '">' +
+                '<button type="button" class="btn btn-default" style="padding:2px 10px;" onclick="this.parentElement.remove()">−</button>';
+            document.getElementById('excludeList').appendChild(row);
+        }
+
+        function getExcludePeriods() {
+            const periods = [];
+            let bad = null;
+            document.querySelectorAll('#excludeList > div').forEach(row => {
+                const s = row.querySelector('.ex-start').value;
+                const e = row.querySelector('.ex-end').value;
+                if (!s && !e) return;              // 空行忽略
+                if (!s || !e || s >= e) bad = (s || '?') + ' ~ ' + (e || '?');
+                else periods.push([s, e]);
+            });
+            if (bad) { alert('剔除时段无效（起始须早于结束）: ' + bad); return null; }
+            return periods;
+        }
+
         async function submitForm() {
             if (!selectedFile) {
-                alert('Please select DNI data file');
+                alert('Please select a data file (svd or svg)');
                 return;
             }
             
             const submitBtn = document.getElementById('submitBtn');
             submitBtn.disabled = true;
             submitBtn.textContent = 'Processing...';
+            submitStartTime = Date.now();
+            document.getElementById('progressTime').textContent = '0.0 s';
             
             try {
                 const formData = new FormData();
                 formData.append('file', selectedFile);
-                formData.append('latitude', document.getElementById('latitude').value);
-                formData.append('longitude', document.getElementById('longitude').value);
-                formData.append('pressure', document.getElementById('pressure').value);
-                
+                const excludePeriods = getExcludePeriods();
+                if (excludePeriods === null) {  // 时段校验失败，恢复按钮并中止
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = currentDataType === 'svg' ? 'Load & View' : 'Start Inversion';
+                    return;
+                }
+                formData.append('exclude_periods', JSON.stringify(excludePeriods));
+                // 数据格式覆盖参数：时段按行数均分；波长留空时后端回退（svd 300-1100nm，svg 按列数识别）
+                formData.append('data_start_time', document.getElementById('data_start_time').value);
+                formData.append('data_end_time', document.getElementById('data_end_time').value);
+                formData.append('data_wl_start', document.getElementById('data_wl_start').value);
+                formData.append('data_wl_end', document.getElementById('data_wl_end').value);
+
                 let endpoint = '';
-                if (currentType === 'aod') {
-                    endpoint = '/aod-inversion';
-                    formData.append('ozone_du', document.getElementById('ozone_du').value);
-                    formData.append('airmass_method', document.getElementById('airmass_method').value);
-                    formData.append('rayleigh_method', document.getElementById('rayleigh_method').value);
-                    formData.append('gas_correction', document.getElementById('gas_correction').value);
-                    formData.append('langley_cal', document.getElementById('langley_cal').value);
-                    formData.append('calc_mode', document.getElementById('calc_mode').value);
-                } else if (currentType === 'wv') {
-                    endpoint = '/water-vapor';
-                    formData.append('wv_method', document.getElementById('wv_method').value);
-                    formData.append('pwv_a', document.getElementById('pwv_a').value);
-                    formData.append('pwv_b', document.getElementById('pwv_b').value);
-                    formData.append('langley_cal', document.getElementById('langley_cal').value);
-                    formData.append('calc_mode', document.getElementById('calc_mode').value);
+                if (currentDataType === 'svg') {
+                    // svg 水平总辐射：只做绘图与积分，无需反演参数，同步返回
+                    endpoint = '/view-svg';
                 } else {
-                    endpoint = '/process-dni';
+                    formData.append('latitude', document.getElementById('latitude').value);
+                    formData.append('longitude', document.getElementById('longitude').value);
+                    // 海拔必填；气压来源：由海拔计算 或 直接输入气压
+                    const pMode = document.getElementById('pressure_mode').value;
+                    const altVal = document.getElementById('altitude').value;
+                    const pVal = document.getElementById('pressure').value;
+                    if (!altVal || (pMode === 'pressure' && !pVal)) {
+                        alert(!altVal ? '海拔为必填参数 / Altitude is required'
+                                      : '直接输入气压模式下气压不能为空 / Pressure is required');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Start Inversion';
+                        return;
+                    }
+                    formData.append('altitude', altVal);
+                    formData.append('pressure_mode', pMode);
+                    if (pMode === 'pressure') {
+                        formData.append('pressure', pVal);
+                    }
+                    if (currentType === 'aod') {
+                        endpoint = '/aod-inversion';
+                        formData.append('ozone_du', document.getElementById('ozone_du').value);
+                        formData.append('airmass_method', document.getElementById('airmass_method').value);
+                        formData.append('rayleigh_method', document.getElementById('rayleigh_method').value);
+                        formData.append('gas_correction', document.getElementById('gas_correction').value);
+                        formData.append('langley_cal', document.getElementById('langley_cal').value);
+                        formData.append('langley_segment', document.getElementById('langley_segment').value);
+                        formData.append('langley_start', document.getElementById('langley_start').value.trim());
+                        formData.append('langley_end', document.getElementById('langley_end').value.trim());
+                        formData.append('calc_mode', document.getElementById('calc_mode').value);
+                    } else if (currentType === 'wv') {
+                        endpoint = '/water-vapor';
+                        formData.append('wv_method', document.getElementById('wv_method').value);
+                        formData.append('pwv_a', document.getElementById('pwv_a').value);
+                        formData.append('pwv_b', document.getElementById('pwv_b').value);
+                        formData.append('langley_cal', document.getElementById('langley_cal').value);
+                        formData.append('langley_segment', document.getElementById('langley_segment').value);
+                        formData.append('langley_start', document.getElementById('langley_start').value.trim());
+                        formData.append('langley_end', document.getElementById('langley_end').value.trim());
+                        formData.append('calc_mode', document.getElementById('calc_mode').value);
+                    } else {
+                        endpoint = '/process-dni';
+                    }
                 }
                 
                 const response = await fetch(endpoint, {
@@ -580,13 +829,14 @@
                     currentResult = data;
                     displayResults(data);
                 } else {
-                    alert('Processing failed: ' + data.message);
+                    // FastAPI 错误（如404/422）返回 detail 字段而非 message
+                    alert('Processing failed: ' + (data.message || data.detail || ('HTTP ' + response.status)));
                 }
             } catch (error) {
                 alert('Request failed: ' + error.message);
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Start Inversion';
+                submitBtn.textContent = currentDataType === 'svg' ? 'Load & View' : 'Start Inversion';
                 document.getElementById('progressArea').style.display = 'none';
             }
         }
@@ -598,6 +848,11 @@
                 const pct = document.getElementById('progressPct');
                 const stageEl = document.getElementById('progressStage');
                 const timer = setInterval(async () => {
+                    // 已用时间实时更新（慢机器上可直观看到任务仍在运行）
+                    if (submitStartTime) {
+                        document.getElementById('progressTime').textContent =
+                            ((Date.now() - submitStartTime) / 1000).toFixed(1) + ' s';
+                    }
                     try {
                         const resp = await fetch('/task-status/' + taskId);
                         const task = await resp.json();
@@ -625,14 +880,60 @@
         
         function displayResults(data) {
             document.getElementById('resultCard').style.display = 'block';
+            // 记录总耗时（提交到结果展示），供评估计算机性能需求
+            if (submitStartTime) {
+                window.lastElapsedSec = (Date.now() - submitStartTime) / 1000;
+                submitStartTime = null;
+            }
+            document.getElementById('procTime').textContent =
+                (window.lastElapsedSec != null) ? window.lastElapsedSec.toFixed(1) + ' s' : '-';
             document.getElementById('resultId').textContent = data.result_id;
-            const typeLabels = {aod: 'AOD Inversion', ozone: 'Ozone Inversion', wv: 'Water Vapor (936nm)'};
-            document.getElementById('inversionType').textContent = typeLabels[currentType] || currentType;
+            const typeLabels = {aod: 'AOD Inversion', ozone: 'Ozone Inversion', wv: 'Water Vapor (936nm)', svg: 'Global Radiation View (svg)'};
+            document.getElementById('inversionType').textContent = currentDataType === 'svg' ? typeLabels.svg : (typeLabels[currentType] || currentType);
             document.getElementById('dataDate').textContent = (data.result && data.result.data_date) ? data.result.data_date : 'Unknown';
+            // 剔除时段回显（实际生效、已裁剪到数据范围）
+            const exLine = document.getElementById('excludedLine');
+            const ex = (data.result && data.result.excluded_periods) || [];
+            if (ex.length) {
+                exLine.style.display = '';
+                document.getElementById('excludedPeriods').textContent = ex.map(p => p[0] + '~' + p[1]).join(', ');
+            } else {
+                exLine.style.display = 'none';
+            }
             // 缓存扁平化后的结果数据，供图表重绘（如纵轴切换）使用
             window.currentResult = data.result;
             
             const resultContent = document.getElementById('resultContent');
+            
+            if (currentDataType === 'svg') {
+                resultContent.innerHTML = `
+                    <div class="tabs">
+                        <div class="tab-item active" onclick="switchTab('svg-spectrum')">Hourly Spectra</div>
+                        <div class="tab-item" onclick="switchTab('svg-integrals')">Integral Time Series</div>
+                        <div class="tab-item" onclick="switchTab('svg-data')">Raw Data</div>
+                    </div>
+
+                    <div id="svg-spectrum" class="tab-content active">
+                        <div id="svgSpectrumChart" class="chart-container"></div>
+                    </div>
+
+                    <div id="svg-integrals" class="tab-content">
+                        <div id="svgIntChart" class="chart-container"></div>
+                        <div id="svgPpfdLuxChart" class="chart-container"></div>
+                    </div>
+
+                    <div id="svg-data" class="tab-content">
+                        <div id="svgDataTable"></div>
+                    </div>
+                `;
+
+                setTimeout(() => {
+                    renderSvgSpectrum(data.result);
+                    renderSvgIntegrals(data.result);
+                    renderSvgTable(data.result);
+                }, 100);
+                return;
+            }
             
             if (currentType === 'aod') {
                 resultContent.innerHTML = `
@@ -644,6 +945,26 @@
                     </div>
                     
                     <div id="time-series" class="tab-content active">
+                        <div style="margin-bottom:8px; font-size:13px; color:#606266;" id="aodWlPicker">
+                            显示波长:
+                            <label style="margin-left:8px;"><input type="checkbox" value="340" checked> 340</label>
+                            <label style="margin-left:8px;"><input type="checkbox" value="380" checked> 380</label>
+                            <label style="margin-left:8px;"><input type="checkbox" value="400" checked> 400</label>
+                            <label style="margin-left:8px;"><input type="checkbox" value="440" checked> 440</label>
+                            <label style="margin-left:8px;"><input type="checkbox" value="500" checked> 500</label>
+                            <label style="margin-left:8px;"><input type="checkbox" value="550"> 550</label>
+                            <label style="margin-left:8px;"><input type="checkbox" value="675" checked> 675</label>
+                            <label style="margin-left:8px;"><input type="checkbox" value="780"> 780</label>
+                            <label style="margin-left:8px;"><input type="checkbox" value="870" checked> 870</label>
+                            <label style="margin-left:8px;"><input type="checkbox" value="936" checked> 936</label>
+                            <label style="margin-left:8px;"><input type="checkbox" value="1020" checked> 1020</label>
+                            <span style="margin-left:10px; font-size:12px; color:#909399;">nm（勾选显示/取消隐藏；936/1020含水汽吸收）</span>
+                            <span style="margin-left:16px; font-size:13px; color:#606266;">Y Axis:</span>
+                            <select id="tsYAxisScale" style="padding:4px 8px;font-size:13px;" onchange="renderTimeSeriesChart(window.currentResult)">
+                                <option value="linear" selected>Linear</option>
+                                <option value="log">Logarithmic</option>
+                            </select>
+                        </div>
                         <div id="timeSeriesChart" class="chart-container"></div>
                     </div>
                     
@@ -655,6 +976,9 @@
                                 <option value="log">Logarithmic</option>
                             </select>
                             <span style="font-size:12px;color:#909399;margin-left:12px;">○ 圆圈标记典型波长 (340/380/400/440/500/675/870/936/1020nm)</span>
+                        </div>
+                        <div style="margin-bottom:8px; font-size:13px; color:#606266;" id="aodHourPicker">
+                            显示时刻: <span style="font-size:12px; color:#909399;">（勾选显示/取消隐藏）</span>
                         </div>
                         <div id="wavelengthChart" class="chart-container"></div>
                     </div>
@@ -708,7 +1032,8 @@
                 resultContent.innerHTML = `
                     <div class="tabs">
                         <div class="tab-item active" onclick="switchTab('wv-time-series')">WVOD Time Series</div>
-                        <div class="tab-item" onclick="switchTab('pwv-time-series')">PWV Time Series</div>
+                        <div class="tab-item" onclick="switchTab('pwv-time-series')">PWV Vertical Time Series</div>
+                        <div class="tab-item" onclick="switchTab('pwv-slant-time-series')">PWV Slant Time Series</div>
                         <div class="tab-item" onclick="switchTab('wv-data')">Raw Data</div>
                         <div class="tab-item" onclick="switchTab('data-view')">Data View</div>
                     </div>
@@ -719,6 +1044,10 @@
 
                     <div id="pwv-time-series" class="tab-content">
                         <div id="pwvChart" class="chart-container"></div>
+                    </div>
+
+                    <div id="pwv-slant-time-series" class="tab-content">
+                        <div id="pwvSlantChart" class="chart-container"></div>
                     </div>
 
                     <div id="wv-data" class="tab-content">
@@ -738,6 +1067,7 @@
                 setTimeout(() => {
                     renderWVChart(data.result);
                     renderPWVChart(data.result);
+                    renderPWVSlantChart(data.result);
                     renderWVDataTable(data.result);
                 }, 100);
             } else {
@@ -767,40 +1097,42 @@
             document.querySelectorAll('.tab-item').forEach(item => item.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             
-            event.target.classList.add('active');
-            document.getElementById(tabId).classList.add('active');
+            if (typeof event !== 'undefined' && event && event.target) {
+                event.target.classList.add('active');
+            }
+            const pane = document.getElementById(tabId);
+            if (pane) pane.classList.add('active');
 
             // Data View 标签页按需渲染（保证容器可见、图表尺寸正确）
             if (tabId === 'data-view' && window.currentResult && window.currentResult.raw_view) {
                 setTimeout(() => renderDataView(window.currentResult.raw_view), 50);
             }
             
-            // Resize charts when tab is switched
+            // 图表在隐藏标签页中初始化时测得宽度为0（被压缩）；切换到可见后统一resize恢复。
+            // 遍历该标签页内所有div逐个取echarts实例（含Langley小图），单个异常不影响其他图表。
             setTimeout(() => {
-                if (currentResult) {
-                    const timeSeriesChart = echarts.getInstanceByDom(document.getElementById('timeSeriesChart'));
-                    const wavelengthChart = echarts.getInstanceByDom(document.getElementById('wavelengthChart'));
-                    const wvChart = echarts.getInstanceByDom(document.getElementById('wvChart'));
-                    const pwvChart = echarts.getInstanceByDom(document.getElementById('pwvChart'));
-
-                    if (timeSeriesChart) {
-                        timeSeriesChart.resize();
-                    }
-                    if (wavelengthChart) {
-                        wavelengthChart.resize();
-                    }
-                    if (wvChart) {
-                        wvChart.resize();
-                    }
-                    if (pwvChart) {
-                        pwvChart.resize();
-                    }
-                }
-            }, 100);
+                const p = document.getElementById(tabId);
+                if (!p) return;
+                p.querySelectorAll('div').forEach(el => {
+                    try {
+                        const inst = echarts.getInstanceByDom(el);
+                        if (inst) inst.resize();
+                    } catch (e) { /* 忽略单个图表异常 */ }
+                });
+            }, 120);
         }
         
         function renderTimeSeriesChart(data) {
             const chart = echarts.init(document.getElementById('timeSeriesChart'));
+
+            // 读取勾选的显示波长（默认9条：340/380/400/440/500/675/870/936/1020；550/780可选）
+            const picker = document.getElementById('aodWlPicker');
+            let selWls = [];
+            if (picker) {
+                selWls = Array.from(picker.querySelectorAll('input[type=checkbox]:checked'))
+                    .map(cb => cb.value);
+            }
+            if (selWls.length === 0) selWls = ['440', '500', '675', '870'];  // 全不选时兜底
             
             const option = {
                 title: {
@@ -811,7 +1143,8 @@
                     trigger: 'axis'
                 },
                 legend: {
-                    data: ['AOD 440nm', 'AOD 500nm', 'AOD 675nm', 'AOD 870nm'],
+                    // 图例动态生成，与 series 保持一致
+                    data: [],
                     bottom: 0
                 },
                 dataZoom: [
@@ -834,21 +1167,22 @@
                         rotate: 45
                     }
                 },
-                yAxis: {
-                    type: 'value',
-                    name: 'AOD',
-                    min: 0
-                },
+                yAxis: (function() {
+                    // 线性/对数纵轴切换（与波长分布图一致；对数轴下限0.001）
+                    const scaleEl = document.getElementById('tsYAxisScale');
+                    const scale = scaleEl ? scaleEl.value : 'linear';
+                    if (scale === 'log') return { type: 'log', name: 'AOD', min: 0.001 };
+                    return { type: 'value', name: 'AOD', min: 0 };
+                })(),
                 series: (function() {
-                    const base = [
-                        { name: 'AOD 440nm', type: 'line', data: data.aod_440 || [], smooth: true },
-                        { name: 'AOD 500nm', type: 'line', data: data.aod_500 || [], smooth: true },
-                        { name: 'AOD 675nm', type: 'line', data: data.aod_675 || [], smooth: true },
-                        { name: 'AOD 870nm', type: 'line', data: data.aod_870 || [], smooth: true }
-                    ];
+                    // 按勾选的波长生成series（数据来自后端 AOD_KEY_WAVELENGTHS 全量计算）
+                    const wls = selWls;
+                    const base = wls.map(function(wl) {
+                        return { name: 'AOD ' + wl + 'nm', type: 'line', data: data['aod_' + wl] || [], smooth: true };
+                    });
                     // both 模式：追加快速版虚线对比
                     if (data.aod_440_fast) {
-                        ['440', '500', '675', '870'].forEach(function(wl) {
+                        wls.forEach(function(wl) {
                             base.push({
                                 name: 'AOD ' + wl + 'nm (fast)',
                                 type: 'line',
@@ -863,13 +1197,24 @@
                 })()
             };
 
-            // 图例包含快速版系列
-            if (data.aod_440_fast) {
-                option.legend.data = option.series.map(function(s) { return s.name; });
-            }
+            // 图例始终与 series 保持一致（含勾选波长及快速版）
+            option.legend.data = option.series.map(function(s) { return s.name; });
 
-            chart.setOption(option);
+            // notMerge=true：否则取消勾选后，多余的旧series不会被移除
+            chart.setOption(option, true);
         }
+
+        // 波长勾选/时刻勾选变化时重绘对应图表
+        // 注意：结果区DOM在每次分析后由 innerHTML 重建，直接给勾选容器
+        // 绑监听会随元素销毁而失效，必须用事件委托绑定在稳定祖先上
+        document.addEventListener('change', function(e) {
+            if (!e.target || !e.target.closest) return;
+            if (e.target.closest('#aodWlPicker')) {
+                if (window.currentResult) renderTimeSeriesChart(window.currentResult);
+            } else if (e.target.closest('#aodHourPicker')) {
+                if (window.currentResult) renderWavelengthChart(window.currentResult);
+            }
+        });
         
         function renderWavelengthChart(data) {
             if (!data) return;
@@ -887,6 +1232,20 @@
             
             // Get wavelengths from data
             const wavelengths = data.wavelengths || [];
+
+            // 时刻勾选器：按数据时刻动态生成；仅当时刻集合变化时重建，保留用户勾选状态
+            const hourTimes = data.times || [];
+            const hourPicker = document.getElementById('aodHourPicker');
+            let selHours = hourTimes;
+            if (hourPicker) {
+                const existing = Array.from(hourPicker.querySelectorAll('input[type=checkbox]')).map(cb => cb.value);
+                if (existing.join('|') !== hourTimes.join('|')) {
+                    hourPicker.innerHTML = '显示时刻: ' + hourTimes.map(t =>
+                        '<label style="margin-left:8px;"><input type="checkbox" value="' + t + '" checked> ' + t + '</label>'
+                    ).join('') + '<span style="margin-left:10px; font-size:12px; color:#909399;">（勾选显示/取消隐藏）</span>';
+                }
+                selHours = Array.from(hourPicker.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.value);
+            }
             
             console.log('Wavelengths length:', wavelengths.length);
             console.log('Wavelength series count:', (data.wavelength_series || []).length);
@@ -947,6 +1306,10 @@
             });
             
             console.log('Series data created:', seriesData.length, 'series');
+
+            // 时刻勾选过滤（全不选时兜底显示全部，避免空图困惑）
+            const filteredSeries = (selHours.length === 0) ? seriesData
+                : seriesData.filter(s => selHours.indexOf(s.name) !== -1);
             
             const option = {
                 title: {
@@ -967,7 +1330,7 @@
                     }
                 },
                 legend: {
-                    data: data.times || [],
+                    data: filteredSeries.map(function(s) { return s.name; }),
                     bottom: 0,
                     type: 'scroll', // ????????????????????????
                     pageIconSize: 10,
@@ -1047,7 +1410,7 @@
                     top: '15%',
                     containLabel: true
                 },
-                series: seriesData
+                series: filteredSeries
             };
 
             // notMerge=true：强制重建坐标系（线性/对数纵轴切换在合并模式下不生效）
@@ -1066,24 +1429,24 @@
         
         function renderDataTable(data) {
             const table = document.getElementById('dataTable');
-            
+
             if (!data.time || data.time.length === 0) {
                 table.innerHTML = '<div class="empty-state">No data available</div>';
                 return;
             }
-            
-            let html = '<table class="table"><thead><tr><th>Time</th><th>AOD 440nm</th><th>AOD 500nm</th><th>AOD 675nm</th><th>AOD 870nm</th></tr></thead><tbody>';
-            
+
+            // 动态列出结果中存在的全部AOD波长列
+            const wlCols = ['340', '380', '400', '440', '500', '550', '675', '780', '870', '936', '1020'].filter(wl => data['aod_' + wl]);
+            let html = '<table class="table"><thead><tr><th>Time</th>' +
+                wlCols.map(wl => `<th>AOD ${wl}nm</th>`).join('') +
+                '</tr></thead><tbody>';
+
             for (let i = 0; i < data.time.length; i++) {
-                html += `<tr>
-                    <td>${data.time[i]}</td>
-                    <td>${(data.aod_440[i] || 0).toFixed(4)}</td>
-                    <td>${(data.aod_500[i] || 0).toFixed(4)}</td>
-                    <td>${(data.aod_675[i] || 0).toFixed(4)}</td>
-                    <td>${(data.aod_870[i] || 0).toFixed(4)}</td>
-                </tr>`;
+                html += `<tr><td>${data.time[i]}</td>` +
+                    wlCols.map(wl => `<td>${(data['aod_' + wl][i] || 0).toFixed(4)}</td>`).join('') +
+                    '</tr>';
             }
-            
+
             html += '</tbody></table>';
             table.innerHTML = html;
         }
@@ -1255,22 +1618,22 @@
             chart.setOption(option);
         }
 
-        // PWV 独立子图（水汽结果）
+        // PWV 垂直柱独立子图（水汽结果）
         function renderPWVChart(data) {
             const dom = document.getElementById('pwvChart');
             if (!dom) return;
             const chart = echarts.init(dom);
 
             const series = [
-                { name: 'PWV (mm)', type: 'line', data: data.pwv_mm || [], smooth: true, itemStyle: { color: '#9b59b6' } }
+                { name: 'PWV vertical 垂直柱 (mm)', type: 'line', data: data.pwv_mm || [], smooth: true, itemStyle: { color: '#9b59b6' } }
             ];
             if (data.pwv_mm_fast) {
-                series.push({ name: 'PWV (mm) (fast)', type: 'line', data: data.pwv_mm_fast, smooth: true, lineStyle: { type: 'dashed', color: '#9b59b6' }, itemStyle: { color: '#9b59b6' }, symbol: 'none' });
+                series.push({ name: 'PWV vertical (fast)', type: 'line', data: data.pwv_mm_fast, smooth: true, lineStyle: { type: 'dashed', color: '#9b59b6' }, itemStyle: { color: '#9b59b6' }, symbol: 'none' });
             }
 
             const option = {
                 title: {
-                    text: `Precipitable Water Vapor Time Series${data.data_date ? ' (' + data.data_date + ')' : ''}`,
+                    text: `PWV Vertical Column Time Series${data.data_date ? ' (' + data.data_date + ')' : ''}`,
                     left: 'center',
                     textStyle: { fontSize: 16, fontWeight: 600, color: '#303133' }
                 },
@@ -1297,7 +1660,55 @@
             chart.setOption(option, true);
         }
 
+        // PWV 斜柱独立子图（斜柱 = 垂直柱 × 大气质量 m）
+        function renderPWVSlantChart(data) {
+            const dom = document.getElementById('pwvSlantChart');
+            if (!dom) return;
+            const chart = echarts.init(dom);
+
+            const series = [
+                { name: 'PWV slant 斜柱 (mm)', type: 'line', data: data.pwv_slant_mm || [], smooth: true, itemStyle: { color: '#e67e22' } }
+            ];
+            if (data.pwv_slant_mm_fast) {
+                series.push({ name: 'PWV slant (fast)', type: 'line', data: data.pwv_slant_mm_fast, smooth: true, lineStyle: { type: 'dashed', color: '#e67e22' }, itemStyle: { color: '#e67e22' }, symbol: 'none' });
+            }
+
+            const option = {
+                title: {
+                    text: `PWV Slant Column Time Series (slant = vertical × airmass)${data.data_date ? ' (' + data.data_date + ')' : ''}`,
+                    left: 'center',
+                    textStyle: { fontSize: 16, fontWeight: 600, color: '#303133' }
+                },
+                tooltip: { trigger: 'axis' },
+                legend: { data: series.map(s => s.name), bottom: 0 },
+                dataZoom: [
+                    { type: 'inside', start: 0, end: 100 },
+                    { type: 'slider', start: 0, end: 100, height: 20, bottom: 30 }
+                ],
+                grid: { left: '8%', right: '5%', bottom: '18%', top: '15%' },
+                xAxis: {
+                    type: 'category',
+                    data: data.time || [],
+                    axisLabel: { rotate: 45 }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: 'PWV slant (mm)',
+                    min: 0
+                },
+                series: series
+            };
+
+            chart.setOption(option, true);
+        }
+
         // ============ Data View：原始光谱 / 特征波长辐照度 / Langley拟合 ============
+        // 图表标题统一追加数据日期（保存图片后可溯源）
+        function chartDateSuffix() {
+            const d = window.currentResult && window.currentResult.data_date;
+            return d ? ' (' + d + ')' : '';
+        }
+
         function renderDataView(view) {
             if (!view) return;
             renderRawSpectrum(view);
@@ -1318,7 +1729,7 @@
                 itemStyle: { color: palette[i % palette.length] }
             }));
             chart.setOption({
-                title: { text: 'Direct Solar Irradiance Spectra (hourly)', left: 'center', textStyle: { fontSize: 14 } },
+                title: { text: 'Direct Solar Irradiance Spectra (hourly)' + chartDateSuffix(), left: 'center', textStyle: { fontSize: 14 } },
                 tooltip: { trigger: 'axis' },
                 legend: { bottom: 0, type: 'scroll' },
                 grid: { left: '10%', right: '4%', bottom: '18%', top: '12%' },
@@ -1339,7 +1750,7 @@
                 showSymbol: false, smooth: false, lineStyle: { width: 1.2 }
             }));
             chart.setOption({
-                title: { text: 'Irradiance Time Series at Key Wavelengths', left: 'center', textStyle: { fontSize: 14 } },
+                title: { text: 'Irradiance Time Series at Key Wavelengths' + chartDateSuffix(), left: 'center', textStyle: { fontSize: 14 } },
                 tooltip: { trigger: 'axis' },
                 legend: { bottom: 0, type: 'scroll' },
                 grid: { left: '8%', right: '4%', bottom: '22%', top: '12%' },
@@ -1438,14 +1849,17 @@
                     const eq = (d.slope !== null && d.intercept !== null)
                         ? `y = ${d.intercept.toFixed(3)} ${d.slope >= 0 ? '+' : '−'} ${Math.abs(d.slope).toFixed(3)}·m   R²=${d.r2 !== null ? Number(d.r2).toFixed(4) : '-'}`
                         : 'fit failed';
+                    const dd = window.currentResult && window.currentResult.data_date;
+                    const sub2 = [(d.t_start && d.t_end) ? d.t_start + '~' + d.t_end : '', dd || '']
+                        .filter(Boolean).join('  |  ');
                     chart.setOption({
                         title: {
-                            text: `${wl}nm (${d.segment})${d.success ? '' : ' [below R² threshold]'}`,
-                            subtext: eq,
-                            left: 'center', textStyle: { fontSize: 13 }, subtextStyle: { fontSize: 11, color: '#e6a23c' }
+                            text: `${wl}nm (${d.segment})${d.success ? (d.estimated ? ' [estimated 估计解]' : '') : ' [below R² threshold]'}`,
+                            subtext: eq + (sub2 ? '\n' + sub2 : ''),
+                            left: 'center', textStyle: { fontSize: 13 }, subtextStyle: { fontSize: 11, fontWeight: 600, color: '#1f4e9c', lineHeight: 16 }
                         },
                         tooltip: { trigger: 'item' },
-                        grid: { left: 52, right: 14, bottom: 32, top: 52 },
+                        grid: { left: 52, right: 14, bottom: 32, top: 68 },
                         xAxis: { type: 'value', name: 'm', nameTextStyle: { fontSize: 10 }, min: 0, max: 10 },
                         yAxis: {
                             type: 'value', name: 'ln(E·R²)', nameTextStyle: { fontSize: 10 },
@@ -1458,6 +1872,111 @@
             });
         }
 
+        // ============ svg 水平总辐射：整点光谱 / 积分时间序列 / 数据表 ============
+        function renderSvgSpectrum(result) {
+            const dom = document.getElementById('svgSpectrumChart');
+            if (!dom) return;
+            const chart = echarts.getInstanceByDom(dom) || echarts.init(dom);
+            const palette = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#ea7ccc','#4b565e','#c23531','#2f4554'];
+            const series = (result.hourly_spectra || []).map((h, i) => ({
+                name: h.label, type: 'line',
+                data: result.wavelengths.map((w, j) => [w, h.values[j]]),
+                showSymbol: false, lineStyle: { width: 1.5 },
+                itemStyle: { color: palette[i % palette.length] }
+            }));
+            chart.setOption({
+                title: { text: 'Global Horizontal Irradiance Spectra (hourly)' + (result.data_date ? ' (' + result.data_date + ')' : ''), left: 'center', textStyle: { fontSize: 14 } },
+                tooltip: { trigger: 'axis' },
+                legend: { bottom: 0, type: 'scroll' },
+                grid: { left: '10%', right: '4%', bottom: '18%', top: '12%' },
+                xAxis: { type: 'value', name: 'Wavelength (nm)', min: 'dataMin', max: 'dataMax' },
+                yAxis: { type: 'value', name: 'Irradiance', min: 0 },
+                dataZoom: [{ type: 'inside' }],
+                series: series
+            }, true);
+        }
+
+        function renderSvgIntegrals(result) {
+            const ig = result.integrals || {};
+            const dateStr = result.data_date ? ' (' + result.data_date + ')' : '';
+            const time = result.time || [];
+
+            // 图1：积分辐照度（W/m²）：全谱段 + UV/VIS/NIR + PAR
+            const dom1 = document.getElementById('svgIntChart');
+            if (dom1) {
+                const chart1 = echarts.getInstanceByDom(dom1) || echarts.init(dom1);
+                const defs = [
+                    ['total', 'Total (full band)', '#303133'],
+                    ['uv', 'UV 300-400nm', '#9b59b6'],
+                    ['vis', 'VIS 400-700nm', '#67c23a'],
+                    ['nir', 'NIR 700-1100nm', '#e6a23c'],
+                    ['par_w', 'PAR 400-700nm', '#409eff']
+                ];
+                chart1.setOption({
+                    title: { text: 'Spectral Integral Irradiance' + dateStr, left: 'center', textStyle: { fontSize: 14 } },
+                    tooltip: { trigger: 'axis', valueFormatter: v => (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(3) + ' W/m²' },
+                    legend: { bottom: 0 },
+                    grid: { left: '8%', right: '4%', bottom: '20%', top: '14%' },
+                    xAxis: { type: 'category', data: time, axisLabel: { rotate: 45 } },
+                    yAxis: { type: 'value', name: 'Irradiance (W/m²)', min: 0 },
+                    dataZoom: [{ type: 'inside', start: 0, end: 100 }, { type: 'slider', start: 0, end: 100, height: 20, bottom: 35 }],
+                    series: defs.filter(d => ig[d[0]]).map(d => ({
+                        name: d[1], type: 'line', data: ig[d[0]],
+                        showSymbol: false, smooth: false, lineStyle: { width: 1.5 }, itemStyle: { color: d[2] }
+                    }))
+                }, true);
+            }
+
+            // 图2：PAR光子通量密度 + 照度（双纵轴）
+            const dom2 = document.getElementById('svgPpfdLuxChart');
+            if (dom2) {
+                const chart2 = echarts.getInstanceByDom(dom2) || echarts.init(dom2);
+                chart2.setOption({
+                    title: { text: 'PAR Photon Flux Density & Illuminance' + dateStr, left: 'center', textStyle: { fontSize: 14 } },
+                    tooltip: { trigger: 'axis' },
+                    legend: { bottom: 0 },
+                    grid: { left: '10%', right: '10%', bottom: '20%', top: '14%' },
+                    xAxis: { type: 'category', data: time, axisLabel: { rotate: 45 } },
+                    yAxis: [
+                        { type: 'value', name: 'PPFD (μmol/m²/s)', min: 0, position: 'left' },
+                        { type: 'value', name: 'Illuminance (lux)', min: 0, position: 'right', splitLine: { show: false } }
+                    ],
+                    dataZoom: [{ type: 'inside', start: 0, end: 100 }, { type: 'slider', start: 0, end: 100, height: 20, bottom: 35 }],
+                    series: [
+                        { name: 'PAR PPFD', type: 'line', data: ig.par_ppfd || [], showSymbol: false, lineStyle: { width: 1.5 }, itemStyle: { color: '#67c23a' } },
+                        { name: 'Illuminance', type: 'line', yAxisIndex: 1, data: ig.lux || [], showSymbol: false, lineStyle: { width: 1.5 }, itemStyle: { color: '#fac858' } }
+                    ]
+                }, true);
+            }
+        }
+
+        function renderSvgTable(result) {
+            const table = document.getElementById('svgDataTable');
+            if (!table) return;
+            const ig = result.integrals || {};
+            const time = result.time || [];
+            if (time.length === 0) {
+                table.innerHTML = '<div class="empty-state">No data available</div>';
+                return;
+            }
+            let html = '<table class="table"><thead><tr><th>Time</th><th>Total (W/m²)</th><th>UV 300-400 (W/m²)</th><th>VIS 400-700 (W/m²)</th><th>NIR 700-1100 (W/m²)</th><th>PAR (W/m²)</th><th>PPFD (μmol/m²/s)</th><th>Illuminance (lux)</th></tr></thead><tbody>';
+            const fmt = (v, nd) => (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(nd === undefined ? 3 : nd);
+            for (let i = 0; i < time.length; i++) {
+                html += `<tr>
+                    <td>${time[i]}</td>
+                    <td>${fmt(ig.total && ig.total[i])}</td>
+                    <td>${fmt(ig.uv && ig.uv[i])}</td>
+                    <td>${fmt(ig.vis && ig.vis[i])}</td>
+                    <td>${fmt(ig.nir && ig.nir[i])}</td>
+                    <td>${fmt(ig.par_w && ig.par_w[i])}</td>
+                    <td>${fmt(ig.par_ppfd && ig.par_ppfd[i], 1)}</td>
+                    <td>${fmt(ig.lux && ig.lux[i], 0)}</td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            table.innerHTML = html;
+        }
+
         function renderWVDataTable(data) {
             const table = document.getElementById('wvDataTable');
 
@@ -1466,7 +1985,7 @@
                 return;
             }
 
-            let html = '<table class="table"><thead><tr><th>Time</th><th>WVOD 936nm</th><th>PWV (mm)</th><th>AOD 870nm</th><th>AOD 1020nm</th><th>Angstrom α</th><th>Baseline 936nm</th></tr></thead><tbody>';
+            let html = '<table class="table"><thead><tr><th>Time</th><th>WVOD 936nm</th><th>PWV vertical (mm)</th><th>PWV slant (mm)</th><th>AOD 870nm</th><th>AOD 1020nm</th><th>Angstrom α</th><th>Baseline 936nm</th></tr></thead><tbody>';
 
             for (let i = 0; i < data.time.length; i++) {
                 const fmt = (v) => (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(4);
@@ -1474,6 +1993,7 @@
                     <td>${data.time[i]}</td>
                     <td>${fmt(data.wvod_936[i])}</td>
                     <td>${fmt(data.pwv_mm ? data.pwv_mm[i] : null)}</td>
+                    <td>${fmt(data.pwv_slant_mm ? data.pwv_slant_mm[i] : null)}</td>
                     <td>${fmt(data.aod_870[i])}</td>
                     <td>${fmt(data.aod_1020[i])}</td>
                     <td>${fmt(data.angstrom_alpha[i])}</td>
@@ -1505,11 +2025,12 @@
             
             const resultId = document.getElementById('resultId').textContent;
             const filename = selectedFile ? selectedFile.name.replace(/\.[^/.]+$/, "") : 'unknown';
+            const saveEndpoint = currentDataType === 'svg' ? '/save-svg-results' : '/save-results';
             
             document.getElementById('submitBtn').disabled = true;
             document.getElementById('submitBtn').textContent = 'Saving...';
             
-            fetch('/save-results', {
+            fetch(saveEndpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
@@ -1522,7 +2043,7 @@
             .then(response => response.json())
             .then(data => {
                 document.getElementById('submitBtn').disabled = false;
-                document.getElementById('submitBtn').textContent = 'Start Inversion';
+                document.getElementById('submitBtn').textContent = currentDataType === 'svg' ? 'Load & View' : 'Start Inversion';
                 
                 if (data.status === 'success') {
                     alert('Results saved successfully!\nExcel file: ' + data.excel_path);
@@ -1532,7 +2053,7 @@
             })
             .catch(error => {
                 document.getElementById('submitBtn').disabled = false;
-                document.getElementById('submitBtn').textContent = 'Start Inversion';
+                document.getElementById('submitBtn').textContent = currentDataType === 'svg' ? 'Load & View' : 'Start Inversion';
                 alert('Error saving results: ' + error.message);
             });
         }
@@ -1549,9 +2070,14 @@
             document.getElementById('submitBtn').disabled = true;
             document.getElementById('submitBtn').textContent = 'Saving Charts...';
             
-            // Get chart instances
-            const timeSeriesChart = echarts.getInstanceByDom(document.getElementById('timeSeriesChart'));
-            const wavelengthChart = echarts.getInstanceByDom(document.getElementById('wavelengthChart'));
+            // Get chart instances（svd: 时间序列+波长曲线；svg: 整点光谱+积分+PPFD/照度）
+            const getInst = (id) => {
+                const el = document.getElementById(id);
+                return el ? echarts.getInstanceByDom(el) : null;
+            };
+            const chartFields = currentDataType === 'svg'
+                ? [['svgSpectrumChart', 'spectrum_chart'], ['svgIntChart', 'integral_chart'], ['svgPpfdLuxChart', 'ppfd_lux_chart']]
+                : [['timeSeriesChart', 'time_series_chart'], ['wavelengthChart', 'wavelength_chart']];
             
             // Create form data
             const formData = new FormData();
@@ -1559,23 +2085,13 @@
             formData.append('filename', filename);
             
             // Convert charts to base64 images
-            if (timeSeriesChart) {
-                const timeSeriesUrl = timeSeriesChart.getDataURL({
-                    type: 'png',
-                    pixelRatio: 2,
-                    backgroundColor: '#fff'
-                });
-                formData.append('time_series_chart', timeSeriesUrl.split(',')[1]);
-            }
-            
-            if (wavelengthChart) {
-                const wavelengthUrl = wavelengthChart.getDataURL({
-                    type: 'png',
-                    pixelRatio: 2,
-                    backgroundColor: '#fff'
-                });
-                formData.append('wavelength_chart', wavelengthUrl.split(',')[1]);
-            }
+            chartFields.forEach(([domId, field]) => {
+                const inst = getInst(domId);
+                if (inst) {
+                    const url = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
+                    formData.append(field, url.split(',')[1]);
+                }
+            });
             
             fetch('/save-charts', {
                 method: 'POST',
@@ -1584,7 +2100,7 @@
             .then(response => response.json())
             .then(data => {
                 document.getElementById('submitBtn').disabled = false;
-                document.getElementById('submitBtn').textContent = 'Start Inversion';
+                document.getElementById('submitBtn').textContent = currentDataType === 'svg' ? 'Load & View' : 'Start Inversion';
                 
                 if (data.status === 'success') {
                     alert('Charts saved successfully!\nCharts saved to: ' + data.charts_dir);
@@ -1594,10 +2110,38 @@
             })
             .catch(error => {
                 document.getElementById('submitBtn').disabled = false;
-                document.getElementById('submitBtn').textContent = 'Start Inversion';
+                document.getElementById('submitBtn').textContent = currentDataType === 'svg' ? 'Load & View' : 'Start Inversion';
                 alert('Error saving charts: ' + (error.message || JSON.stringify(error)));
             });
         }
+    </script>
+
+    <!-- 关于对话框（版本/编写人/版权，数据源自 /api/about，静态内容为兜底） -->
+    <div id="aboutModal" style="display:none; position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.4); z-index:9999;"
+         onclick="if(event.target===this)hideAbout()">
+        <div style="background:#fff; max-width:480px; margin:12vh auto; border-radius:10px; padding:24px 28px; box-shadow:0 8px 30px rgba(0,0,0,0.25); font-size:14px; color:#303133; line-height:1.9;">
+            <h3 style="margin:0 0 2px; color:#2c3e50;">高光谱 AOD / WVOD 反演软件</h3>
+            <div style="color:#909399; font-size:12px; margin-bottom:12px;">Hyperspectral AOD / WVOD Inversion System</div>
+            <div>版本 Version：<b id="aboutVersion">v1.0.0</b></div>
+            <div>编写人 Authors：Liu Liying, Zheng Feng</div>
+            <div>联系邮箱 Contact：<a href="mailto:feng1214@126.com" style="color:#409eff;">feng1214@126.com</a></div>
+            <div>算法标准 Standard：QX/T 69-2024《气溶胶光学厚度 太阳光度计法》</div>
+            <div style="margin-top:10px; color:#909399; font-size:12px;">Copyright © 2026 Liu Liying, Zheng Feng (MIT License)</div>
+            <div style="text-align:right; margin-top:14px;">
+                <button onclick="hideAbout()" style="padding:6px 18px; border:none; border-radius:4px; background:#409eff; color:#fff; cursor:pointer;">关闭</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        function showAbout() { document.getElementById('aboutModal').style.display = 'block'; }
+        function hideAbout() { document.getElementById('aboutModal').style.display = 'none'; }
+        // 版本以后端 /api/about 为单一来源；请求失败时保留页面静态兜底值
+        fetch('/api/about').then(r => r.json()).then(info => {
+            if (info && info.version) {
+                document.getElementById('appVersion').textContent = 'v' + info.version;
+                document.getElementById('aboutVersion').textContent = 'v' + info.version;
+            }
+        }).catch(() => {});
     </script>
 </body>
 </html>
