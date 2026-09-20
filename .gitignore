@@ -3,6 +3,7 @@
 !.gitignore
 !README.md
 !CHANGELOG.md
+!LICENSE
 
 # 核心代码
 !aod_inversion.py
