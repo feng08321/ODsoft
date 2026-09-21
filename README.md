@@ -1,64 +1,50 @@
-# 高光谱 AOD / WVOD 反演软件
+# Hyperspectral AOD / WVOD Retrieval Software
 
-**版本 v1.0.0** · 编写人：Liu Liying, Zheng Feng · 联系：feng1214@126.com · 许可：MIT License
+**Version v1.0.0** · Authors: Liu Liying, Zheng Feng · Contact: feng1214@126.com · License: MIT License
 
-基于高光谱太阳直接辐照度（DNI）观测反演气溶胶光学厚度（AOD）、Ångström 参数、
-936nm 水汽光学厚度（WVOD）与可降水量（PWV，垂直柱/斜柱双表示）。
+Retrieves aerosol optical depth (AOD), Ångström parameters, 936 nm water vapor optical depth (WVOD), and precipitable water vapor (PWV, in both vertical- and slant-column forms) from hyperspectral solar direct normal irradiance (DNI) observations.
 
-算法依据 **QX/T 69-2024《气溶胶光学厚度 太阳光度计法》**（公式 1–14）及
-《气溶胶光学厚度和 Ångström 参数反演理论基础》，详见 `docs/` 与系统内帮助页。
+Algorithms follow **QX/T 69-2024 "Aerosol Optical Depth — Sun Photometer Method"** (Eqs. 1–14) and *Theoretical Basis of Aerosol Optical Depth and Ångström Parameter Retrieval*. See `docs/` and the in-app help page for details.
 
-## 主要功能
+## Key Features
 
-- **数据导入**：svd（光谱直接辐射）/ svg（水平总辐射）两类 Excel 文件；
-  光谱范围按列数自动识别（801→300–1100nm，121→280–400nm，751→950–1700nm）；
-  支持任意多时段人工剔除（剔除数据置 NaN 不参与定标与反演）
-- **Langley 定标**：约 800 波长向量化回归（<1 秒），Bouguer-Langley 云/扰动剔除；
-  日级统一拟合时间窗（上午/下午自动择优或人工指定时段）；
-  分级接收判据——物理约束 0<τ≤1 第一否决、R²≥0.9 正常解、
-  σ(lnE₀)≤0.01 且 R²≥0.5 估计解（图题/报告标注 `[estimated 估计解]`）；
-  定标失败波长自动回退 Wehrli (1985) 标准光谱
-- **AOD 反演**：11 个特征波长（340/380/400/440/500/550/675/780/870/936/1020nm）
-  时间序列 + 全波段 AOD 谱（总光学厚度减瑞利散射）
-- **水汽反演**：936nm 基线法（QX/T 公式 8–10）WVOD；按 QX/T 公式 5–7 斜程
-  透过率公式换算 PWV（mm，系数 a/b 可调），垂直柱与斜柱（=垂直柱×m）同时输出
-- **svg 总辐射积分**：全谱 / UV / VIS / NIR / PAR / PPFD / 照度（CIE 1931 V(λ)）
-- **可视化**：时间序列与波长分布图均支持线性/对数纵轴切换、分线勾选显示/隐藏；
-  Langley 拟合诊断图；原始光谱与辐照度时间序列查看页；PWV 垂直柱/斜柱独立子页
-- **三种计算模式**：Fast（向量化）/ Slow（逐分钟）/ Both（同图对比）
-- 多算法选项：大气质量数（Kasten 等 4 种）、瑞利公式、气体扣除开关、水汽基线方法；
-  经纬度/海拔（气压自动换算）/臭氧柱含量参数化配置；参数配置文件导入导出；
-  结果图表与 Excel 报告导出
+- **Data import**: two Excel file types — svd (spectral direct irradiance) and svg (global horizontal irradiance); spectral range auto-detected from column count (801 → 300–1100 nm, 121 → 280–400 nm, 751 → 950–1700 nm); manual exclusion of arbitrary time periods (excluded data are set to NaN and skipped in calibration and retrieval)
+- **Langley calibration**: vectorized regression over ~800 wavelengths (<1 s); Bouguer–Langley cloud/disturbance screening; unified daily fitting window (auto-selected morning/afternoon or user-specified); tiered acceptance criteria — physical constraint 0<τ≤1 as the first veto, R²≥0.9 for normal solutions, σ(lnE₀)≤0.01 with R²≥0.5 for estimated solutions (marked `[estimated]` in plot titles/reports); wavelengths that fail calibration fall back to the Wehrli (1985) standard spectrum
+- **AOD retrieval**: time series at 11 characteristic wavelengths (340/380/400/440/500/550/675/780/870/936/1020 nm) plus full-spectrum AOD (total optical depth minus Rayleigh scattering)
+- **Water vapor retrieval**: 936 nm baseline method (QX/T Eqs. 8–10) for WVOD; PWV (mm, adjustable a/b coefficients) converted via the slant-path transmittance formulas (QX/T Eqs. 5–7); vertical and slant (= vertical × m) columns output simultaneously
+- **svg global irradiance integration**: full spectrum / UV / VIS / NIR / PAR / PPFD / illuminance (CIE 1931 V(λ))
+- **Visualization**: linear/log y-axis toggle and per-line show/hide on both time-series and wavelength-distribution plots; Langley fit diagnostics; raw-spectrum and irradiance time-series viewers; dedicated subpages for vertical/slant PWV
+- **Three computation modes**: Fast (vectorized) / Slow (minute-by-minute) / Both (same-plot comparison)
+- Multiple algorithm options: air mass (4 formulations including Kasten), Rayleigh formulas, gas-absorption toggles, water-vapor baseline methods; parameterized latitude/longitude/altitude (automatic pressure conversion)/ozone column; parameter profile import/export; export of result figures and Excel reports
 
-## 运行
+## Run
 
 ```bat
 pip install -r requirements.txt
 start_all.bat
 ```
 
-浏览器打开 http://localhost:8000 ，上传单日 svd/svg 格式 Excel 数据文件即可。
+Open http://localhost:8000 in a browser and upload a single-day svd/svg Excel data file.
 
-## 文件说明
+## File Overview
 
-| 文件 | 说明 |
+| File | Description |
 |---|---|
-| `aod_inversion.py` | 核心算法库（太阳几何、光学厚度反演、Langley 定标、WVOD/PWV） |
-| `process_dni_data.py` | 数据读取与批处理（慢速逐分钟 / 快速向量化） |
-| `main.py` | FastAPI 后端（异步任务 + 进度查询 + Excel 导出 + 版本信息接口） |
-| `frontend_english.html` | Web 前端（ECharts） |
-| `help.html` | 反演原理与算法说明页 |
-| `recompute_all.py` | 多日数据批量重算脚本 |
-| `start_all.bat` | 一键启动（自动杀旧 8000 端口进程后重启） |
-| `docs/软件使用说明书.md` | 用户操作手册（安装启动、界面参数、操作流程、结果解读、FAQ） |
-| `docs/算法原理说明.md` | 反演原理与算法说明（与 help.html 一致，评审归档版） |
-| `CHANGELOG.md` | 版本历史 |
+| `aod_inversion.py` | Core algorithm library (solar geometry, optical-depth retrieval, Langley calibration, WVOD/PWV) |
+| `process_dni_data.py` | Data reading and batch processing (slow minute-by-minute / fast vectorized) |
+| `main.py` | FastAPI backend (async tasks + progress queries + Excel export + version endpoint) |
+| `frontend_english.html` | Web frontend (ECharts) |
+| `help.html` | Retrieval principles and algorithm description page |
+| `recompute_all.py` | Batch recomputation script for multi-day data |
+| `start_all.bat` | One-click startup (kills any stale process on port 8000, then restarts) |
+| `docs/软件使用说明书.md` | User manual — installation, UI parameters, workflow, result interpretation, FAQ (Chinese) |
+| `docs/算法原理说明.md` | Retrieval principles and algorithms, review/archive edition, consistent with help.html (Chinese) |
+| `CHANGELOG.md` | Version history |
 
-## 已知限制
+## Known Limitations
 
-- 臭氧反演模块结果不可用（待重做，紫外段差分截面与定标需完善）
-- 臭氧 Chappuis 带（450–750nm）未扣除，675nm AOD 略偏高
-- 水汽/氧气强吸收带内（约 690–730、760、790–870、920–980nm）的光谱数据不可定量使用
-- 太阳天顶角 θ ≥ 85° 的数据点不参与反演；纬度需准确至 0.1° 量级
-- 旧批次数据 870nm 通道存在 ±1 像素 CCD 时序抖动（新版 FPGA 固件已修复），
-  定标走估计解判据，数据保留不修
+- The ozone retrieval module is currently unusable (to be rebuilt; UV differential cross-sections and calibration need refinement)
+- The ozone Chappuis band (450–750 nm) is not corrected, so 675 nm AOD is slightly overestimated
+- Spectral data inside strong water-vapor/oxygen absorption bands (~690–730, 760, 790–870, 920–980 nm) cannot be used quantitatively
+- Points with solar zenith angle θ ≥ 85° are excluded from retrieval; latitude must be accurate to ~0.1°
+- Older data batches show ±1-pixel CCD timing jitter in the 870 nm channel (fixed in the new FPGA firmware); calibration for these data follows the estimated-solution criteria and the data are kept uncorrected
